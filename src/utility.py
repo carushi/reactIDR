@@ -4,7 +4,7 @@ def log(s):
     print(s)
     sys.stdout.flush()
 
-MAXLINE=100000
+MAXLINE=-1
 
 def parse_line(line, func):
     contents = line.rstrip('\n').split('\t')
@@ -50,3 +50,28 @@ def parse_idr(file, func = int):
             key, idx1, idx2, IDR = line.rstrip('\n').split('\t')
             tdict[key] = list(map(func, IDR.split(';')))
     return tdict
+
+def parse_score_iterator(file):
+    with open(file) as f:
+        f.readline()
+        while True:
+            line = f.readline()
+            if line == "":  break
+            key, score1, score2 = line.rstrip('\n').split('\t')
+            if len(score1) > 0 and len(score2) > 0:
+                yield key, list(map(int, score1.split(';'))), list(map(int, score2.split(';')))
+
+
+def parse_idr_iterator(file, func = int):
+    tdict = {}
+    with open(file) as f:
+        f.readline()
+        while True:
+            line = f.readline()
+            if line == "":  break
+            key, idx1, idx2, IDR = line.rstrip('\n').split('\t')
+            yield key, list(map(func, IDR.split(';')))
+
+def extract_dict(tdict, keys):
+    return {i: tdict[i] for i in keys if i in tdict.keys()}
+

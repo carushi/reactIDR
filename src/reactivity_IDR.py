@@ -4,6 +4,7 @@ import sys
 import random
 import subprocess
 import os
+import math
 from statsmodels.tsa.stattools import acf
 import pvalue
 import pylab
@@ -15,18 +16,23 @@ from plot_image import *
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("ifiles", nargs='+', type=str, help="read score data from FILE 1,2,3 ...(case) <1,2,3 ...(control)>", metavar="INPUT")
-    parser.add_argument("-o", "--ofile", dest="ofile", help="write score data to FILE", default='temp', metavar="OUTPUT", required=False)
+    parser.add_argument("--prefix", dest="prefix", help="file prefix for score data", default='temp', metavar="OUTPUT", required=False)
     parser.add_argument("-I", "--input_format", dest="iformat", help="input file format (PARS, multi-column, etcetc)", default="PARS", metavar="FORMAT", required=False)
     parser.add_argument("-O", "--output_format", dest="oformat", help="output file format (txt, bed, wig, etcetc)", default="txt", metavar="FORMAT", required=False)
     parser.add_argument("-t", "--idr", dest="idr", type=float, help="idr cutoff threshold (default: 0.01)", default = 0.01, metavar="IDR", required=False)
     parser.add_argument("-n", "--sample", dest="sample_size", type=int, help="sample size for test (default: 1000)", default=-1, metavar="SAMPLESIZE", required=False)
     parser.add_argument("-d", "--dist", dest="dist_model", help="null distribution for pvalue computation (coverage, rank, poisson, nb, zinb, nb-cisgenome)", default='Coverage', metavar="DIST", required=False)
     parser.add_argument("-r", "--reverese", dest="reverse", action="store_true", help="calculate IDR for reveresed orders (default: false)", required=False)
+    parser.add_argument("-p", "--percent", dest="percent", type=int, help="set a threshold for the minimum ratio of regions with more than 0 read (0 - 100\%)", default=0, required=False)
+    parser.add_argument("-o", "--dir", dest="dir", help="output directory", default="./output/", required=False)
+    parser.add_argument("--mu", dest="mu", help="mean of reproducible group", default="1", required=False)
+    parser.add_argument("--sigma", dest="sigma", help="variance of reproducible group", default="0.2", required=False)
     parser.add_argument("--full", dest="full", action="store_true", help="store IDR as float", required=False)
     parser.add_argument("--image", dest="plot", action="store_true", help="plot score-idr scatter images", required=False)
+    parser.add_argument("--omit", dest="omit", action="store_true", help="print scores only for transcripts with the maxmimum score >0", required=False)
     parser.add_argument("--job_id", dest="job_id", type=int, help="parallel jobs for score transformation ( 0 ~ ( job_all - 1 ) )", default=0, required=False)
     parser.add_argument("--job_all", dest="job_all", type=int, help="parallel jobs for score transformation", default=0, required=False)
-    parser.set_defaults(full=False, plot=False, reverse=False)
+    parser.set_defaults(full=False, plot=False, reverse=False, omit=False)
     return parser
 
 
@@ -38,6 +44,7 @@ class reactIDR:
         self.cnames = ['case', 'control']
         self.print_options()
         self.max_print = 10
+        self.zero_add = 0
 
     def print_options(self):
         for idx, files in enumerate(self.options.ifiles):
@@ -45,8 +52,9 @@ class reactIDR:
         print("# input format:\t"+self.options.iformat)
         if self.options.reverse:
             print("# input rank:\t"+"reversed")
-        print("# output prefix:\t"+self.options.ofile)
+        print("# output prefix:\t"+self.options.prefix)
         print("# output format:\t"+self.options.oformat)
+        print("# output directory:\t"+self.options.dir)
         print("# idr threshold:\t"+str(self.options.idr))
         print("# null distribution:\t"+self.options.dist_model)
         if self.options.sample_size > 0:
@@ -91,10 +99,24 @@ class reactIDR:
         i12 = get_concatenated_score(IDR.keys(), IDR)
         self.visualize_density(i12, cidx, sidx)
         s1, s2, i12 = remove_no_data(s1, s2, i12)
-        plot_score_idr_scatter(s1, s2, i12, 'scatter_score_idr_'+self.output_file_head(cidx, sidx), sidx <= 0)
+        plot_score_idr_scatter(s1, s2, i12, self.output_file_head('scatter_score_idr_', cidx, sidx), sidx <= 0)
+
+    def extract_idr_scatter(self, cidx, threshold = 1.):
+        sidx, IDR, self.dicts = self.get_score_set(cidx)
+        for key in IDR.keys():
+            if max(self.dicts[0][key]) < 100: continue
+            print("# ", key, max(self.dicts[0][key]), max(self.dicts[1][key]))
+            for i in range(len(self.dicts[0][key])):
+                if min(self.dicts[0][key][i], self.dicts[1][key][i]) < 100: continue
+                ratio = float(self.dicts[0][key][i]+1)/float(self.dicts[1][key][i]+1)
+                if abs(math.log10(ratio)) >= threshold:
+                    print("# key", key)
+                    print(self.dicts[0][key])
+                    print(self.dicts[1][key])
+                    break
 
     def visualize_density(self, IDR, cidx, sidx):
-        ofile = 'density_score_idr_'+self.output_file_head(cidx, sidx)+'.png'
+        ofile = self.output_file_head('density_score_idr_', cidx, sidx)+'.png'
         plot_density(IDR, ofile)
 
     def ordered_common_transcript(self):
@@ -119,34 +141,34 @@ class reactIDR:
             l = [(s1[i], s2[i]) for i in range(len(s1)) if abs(s1[i]) > thres and abs(s2[i]) > thres]
             if len(l) == 0: s1, s2 = [], []
             else:   s1, s2 = [list(t) for t in zip(*l)]
-            if self.options.reverse:
-                after = len(s1)
-                if self.options.reverse:    num = after*2
-                else:   num = 0
-                for i in range(0, min(before*2, before-after)):
-                    s1 = np.append(s1, [num]*(after))
-                    s2 = np.append(s2, [num]*(after))
-                # np.save("bs1.txt", s1)
-                # np.save("bs2.txt", s2)
-                # print(s1)
-                # print(s2)
-                # r1, r2 = only_build_rank_vectors(s1, s2)
-                # np.save("as1.txt", r1)
-                # np.save("as2.txt", r2)
+            after = len(s1)
+            if self.options.reverse:    num = after*2
+            else:   num = 0
+            self.zero_add = min(1000, min(before*2, before-after))
+            s1 = np.append([num]*(self.zero_add), s1)
+            s2 = np.append([num]*(self.zero_add), s2)
             utility.log("-> "+str(len(s1))+" and "+str(len(s2)))
         return only_build_rank_vectors(s1, s2)
 
-    def output_file_head(self, cidx, sidx):
+    def check_dir(self):
+        if not os.path.exists(self.options.dir):
+            os.makedirs(self.options.dir)
+        if self.options.dir[-1] != "/":
+            self.options.dir = self.options.dir+"/"
+
+    def output_file_head(self, head, cidx, sidx):
+        self.check_dir()
         if self.options.reverse: tail = '_rev'
         else:   tail = ''
-        return self.options.ofile+'_'+self.cnames[cidx]+'_'+str(sidx)+tail
+        return self.options.dir+head+self.options.prefix+'_'+self.cnames[cidx]+'_'+str(sidx)+tail
 
     def output_file_name(self, cidx, sidx):
+        self.check_dir()
         if self.options.reverse: tail = '_rev'
         else:   tail = ''
-        score_file = self.options.ofile+'_'+self.cnames[cidx]+'_score_'+str(sidx)+'.'+self.options.oformat
-        idr_file = self.options.ofile+'_'+self.cnames[cidx]+'_idr_'+str(sidx)+tail+'.'+self.options.oformat
-        return score_file, idr_file
+        score_file = self.options.prefix+'_'+self.cnames[cidx]+'_score_'+str(sidx)+'.'+self.options.oformat
+        idr_file = self.options.prefix+'_'+self.cnames[cidx]+'_idr_'+str(sidx)+tail+'.'+self.options.oformat
+        return self.options.dir+score_file, self.options.dir+idr_file
 
     def get_print_str_score(self, key, tdict):
         seq = '\t'
@@ -170,27 +192,33 @@ class reactIDR:
         else:
             for key in self.ordered_common_transcript():
                 for idx, tdict in enumerate(self.dicts):
-                    if np.max(tdict[key]) < 1:    continue
-                    # if np.mean(tdict[key]) > 1000 and self.max_print > 0:
-                    #     pvalue.score_to_pvalue(tdict[key], 2, True, "plot_fit_"+key+"_"+str(2))
-                    #     pvalue.score_to_pvalue(tdict[key], 3, True, "plot_fit_"+key+"_"+str(3))
-                    #     pvalue.score_to_pvalue(tdict[key], 4, True, "plot_fit_"+key+"_"+str(4))
-                    #     pvalue.score_to_pvalue(tdict[key], 6, True, "plot_fit_"+key+"_"+str(6))
-                    #     pvalue.score_to_pvalue(tdict[key], 7, True, "plot_fit_"+key+"_"+str(7))
-                    #     self.max_print -= 1
+                    if self.options.percent > 0:
+                        if len([x for x in tdict[key] if x > 0])*100 < len(tdict[key])*self.options.percent:
+                            flag = True
+                            break
+                    elif np.max(tdict[key]) < 1:
+                        continue
                     tdict[key] = pvalue.score_to_pvalue(tdict[key], sidx, self.options.reverse)
+
+    def delete_keys(self, keys):
+        utility.log("Applied for "+str(len(keys))+" samples.")
+        for i in range(len(self.dicts)):
+            self.dicts[i] = {k: self.dicts[i][k] for k in keys}
 
     def print_transformed_score(self, file, cidx, sidx, job_id = 0, job_all = 1):
         utility.log("Score transform and print.")
         # if sidx == 0:   return
+        key_list = self.ordered_common_transcript()[job_id::job_all]
+        if job_all > 1:
+            self.delete_keys(key_list)
         with open(file, 'w') as f:
             if job_id == 0: f.write('key\tscore1\tscore2\n')
-            for key in self.ordered_common_transcript()[job_id::job_all]:
+            for key in key_list:
                 f.write(key)
                 for i in [0, 1]:
                     if key in self.dicts[i]:
                         tdict = self.dicts[i][key]
-                        if np.max(tdict) > 0:
+                        if not self.options.omit or np.max(tdict) > 0:
                             self.dicts[i][key] = pvalue.score_to_pvalue(tdict, sidx, self.options.reverse)
                     f.write(self.get_print_str_score(key, self.dicts[i]))
                 f.write('\n')
@@ -199,11 +227,12 @@ class reactIDR:
         count = 0
         IDR = np.ndarray.tolist(IDR)
         zero = []
-        for i in range(0, int(len(IDR)/2)):
+        for i in range(0, self.zero_add):
             zero.append(-np.log10(IDR.pop(0))*10.)
         zero = np.mean(zero)
         if not self.options.full:   zero = int(np.round(zero))
         with open(file, 'w') as f:
+            utility.log("# Write IDR scores to "+file+"\n")
             f.write("name\tpos1\tpos2\tIDR\n")
             count = 0
             for i in index:
@@ -222,9 +251,10 @@ class reactIDR:
                         tidr.append(zero)
                 f.write(";".join([ str(x) for x in tidr ])+"\n")
 
-    def get_idr_parameter(self, seta):
+    def get_idr_parameter(self, seta, cidx, sidx):
         r1, r2 = self.get_concatenated_rank_scores(seta, True)
-        theta, loss =  only_fit_model_and_calc_idr(r1, r2, max_iter=100)
+        theta, loss =  only_fit_model_and_calc_idr(r1, r2, max_iter=100, mu=float(self.options.mu),
+                        sigma=float(self.options.sigma), image=self.options.plot, header=self.output_file_head("param_em_", cidx, sidx))
         utility.log("End fitting")
         utility.log(theta)
         utility.log(loss)
@@ -235,15 +265,15 @@ class reactIDR:
         localIDRs, IDR = idr.idr.calc_IDR(np.array(theta), r1, r2)
         return localIDRs, IDR
 
-    def fit_and_calc_IDR(self, file, cidx, index=None, sampled=None):
+    def fit_and_calc_IDR(self, file, cidx, sidx, index=None, sampled=None):
         if type(index) == type(None):
             index, sampled = self.sampled_scores()
         if self.options.sample_size > 0:
             utility.log("Sampling and fitting")
-            theta = self.get_idr_parameter(sampled)
+            theta = self.get_idr_parameter(sampled, cidx, sidx)
         else:
             utility.log("Fitting without sampling")
-            theta = self.get_idr_parameter(index)
+            theta = self.get_idr_parameter(index, cidx, sidx)
         localIDRs, IDR = self.get_idr_value(index, theta)
         self.print_dataset_for_each_sample(file, index, IDR)
 
@@ -262,7 +292,7 @@ class reactIDR:
                     process.communicate()
             if not os.path.exists(idr_file):
                 self.dicts = list(utility.parse_score(score_file))
-                self.fit_and_calc_IDR(idr_file, cidx)
+                self.fit_and_calc_IDR(idr_file, cidx, sidx)
 
     def write_pvalue_and_idr(self, cidx):
         sidx = pvalue.check_dist_model(self.options.dist_model)
@@ -272,7 +302,7 @@ class reactIDR:
             self.print_transformed_score(score_file, cidx, sidx)
         if not os.path.exists(idr_file):
             self.dicts = list(utility.parse_score(score_file))
-            self.fit_and_calc_IDR(idr_file, cidx)
+            self.fit_and_calc_IDR(idr_file, cidx, sidx)
 
     def calculate_pvalue_and_idr(self):
         for cidx, files in enumerate(self.options.ifiles):
@@ -291,6 +321,7 @@ class reactIDR:
                     self.add_dict(file)
                 self.write_pvalue_and_idr(cidx)
                 if self.options.plot:
+                    # self.extract_idr_scatter(cidx)
                     self.visualize_score_idr_scatter(cidx)
             self.clear_dict()
             # if cidx == 1: # found both of case and control samples.
@@ -301,7 +332,7 @@ class reactIDR:
         files = [item for sublist in files for item in sublist]
         for idx, ifile in enumerate(files):
             dict = utility.get_score_dict(ifile, self.options.iformat)
-            keys = dict.keys()
+            # keys = dict.keys()
             acc = []
             for i in random.sample(dict.keys(), min(len(list(dict.keys())), int(self.options.sample_size))):
                 if sum(dict[i]) > 0:
@@ -312,7 +343,7 @@ class reactIDR:
                 t = np.mean(list(map(lambda x: x[i], acc)))
                 m.append(t)
             pylab.plot(m, 'r')
-            pylab.savefig(self.options.ofile+'_'+str(idx)+'_acc_mean_sample='+str(self.options.sample_size)+'.png')
+            pylab.savefig(self.options.prefix+'_'+str(idx)+'_acc_mean_sample='+str(self.options.sample_size)+'.png')
             pylab.clf()
 
 
