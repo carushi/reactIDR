@@ -21,13 +21,14 @@ def get_parser():
     parser.add_argument("-O", "--output_format", dest="oformat", help="output file format (txt, bed, wig, etcetc)", default="txt", metavar="FORMAT", required=False)
     parser.add_argument("-t", "--idr", dest="idr", type=float, help="idr cutoff threshold (default: 0.01)", default = 0.01, metavar="IDR", required=False)
     parser.add_argument("-n", "--sample", dest="sample_size", type=int, help="sample size for test (default: 1000)", default=-1, metavar="SAMPLESIZE", required=False)
-    parser.add_argument("-d", "--dist", dest="dist_model", help="null distribution for pvalue computation (coverage, rank, poisson, nb, zinb, nb-cisgenome)", default='Coverage', metavar="DIST", required=False)
+    parser.add_argument("-d", "--dist", dest="dist_model", help="null distribution for pvalue computation (coverage, rank, poisson, nb, zinb, nb-cisgenome, and ec (estimated coverage for downstream normalization))", default='Coverage', metavar="DIST", required=False)
     parser.add_argument("-r", "--reverese", dest="reverse", action="store_true", help="calculate IDR for reveresed orders (default: false)", required=False)
     parser.add_argument("-p", "--percent", dest="percent", type=int, help="set a threshold for the minimum ratio of regions with more than 0 read (0 - 100\%)", default=0, required=False)
     parser.add_argument("-o", "--dir", dest="dir", help="output directory", default="./output/", required=False)
     parser.add_argument("--mu", dest="mu", help="mean of reproducible group", default="1", required=False)
     parser.add_argument("--sigma", dest="sigma", help="variance of reproducible group", default="0.2", required=False)
     parser.add_argument("--full", dest="full", action="store_true", help="store IDR as float", required=False)
+    parser.add_argument("--grid", dest="grid", action="store_true", help="Force grid search for parameter estimation", required=False)
     parser.add_argument("--image", dest="plot", action="store_true", help="plot score-idr scatter images", required=False)
     parser.add_argument("--omit", dest="omit", action="store_true", help="print scores only for transcripts with the maxmimum score >0", required=False)
     parser.add_argument("--job_id", dest="job_id", type=int, help="parallel jobs for score transformation ( 0 ~ ( job_all - 1 ) )", default=0, required=False)
@@ -64,6 +65,8 @@ class reactIDR:
         if self.options.job_all > 1:
             print("# parallel:\t"+str(self.options.job_id)+" / "+str(self.options.job_all))
         print("# full:\t"+str(self.options.full))
+        print("# force grid:\t"+str(self.options.full))
+
 
     def add_dict(self, file):
         self.dicts.append(utility.get_score_dict(file, self.options.iformat))
@@ -187,7 +190,7 @@ class reactIDR:
 
     def score_transform(self, sidx):
         utility.log("Score transform.")
-        if sidx == 0:
+        if sidx <= 0:
             pass
         else:
             for key in self.ordered_common_transcript():
@@ -207,7 +210,6 @@ class reactIDR:
 
     def print_transformed_score(self, file, cidx, sidx, job_id = 0, job_all = 1):
         utility.log("Score transform and print.")
-        # if sidx == 0:   return
         key_list = self.ordered_common_transcript()[job_id::job_all]
         if job_all > 1:
             self.delete_keys(key_list)
@@ -253,8 +255,8 @@ class reactIDR:
 
     def get_idr_parameter(self, seta, cidx, sidx):
         r1, r2 = self.get_concatenated_rank_scores(seta, True)
-        theta, loss =  only_fit_model_and_calc_idr(r1, r2, max_iter=100, mu=float(self.options.mu),
-                        sigma=float(self.options.sigma), image=self.options.plot, header=self.output_file_head("param_em_", cidx, sidx))
+        theta, loss =  only_fit_model_and_calc_idr(r1, r2, max_iter=100, mu=float(self.options.mu), sigma=float(self.options.sigma),
+                        image=self.options.plot, header=self.output_file_head("param_em_", cidx, sidx), grid=self.options.grid)
         utility.log("End fitting")
         utility.log(theta)
         utility.log(loss)
@@ -290,7 +292,7 @@ class reactIDR:
                     else:   cmd = "cat "+score_file+"_"+str(i)+">>"+score_file
                     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                     process.communicate()
-            if not os.path.exists(idr_file):
+            if not os.path.exists(idr_file) and sidx >= 0:
                 self.dicts = list(utility.parse_score(score_file))
                 self.fit_and_calc_IDR(idr_file, cidx, sidx)
 
@@ -300,7 +302,7 @@ class reactIDR:
         index, sampled = self.sampled_scores()
         if not os.path.exists(score_file):
             self.print_transformed_score(score_file, cidx, sidx)
-        if not os.path.exists(idr_file):
+        if not os.path.exists(idr_file) and sidx >= 0:
             self.dicts = list(utility.parse_score(score_file))
             self.fit_and_calc_IDR(idr_file, cidx, sidx)
 

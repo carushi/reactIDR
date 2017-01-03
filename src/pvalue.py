@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import math
 import zero_inflated_p
 
-DIST_LIST = ["coverage", "rank", "poisson", "nb", "zip", "zinb", "p-cisgenome", "nb-cisgenome"]
+DIST_LIST = ["coverage", "rank", "poisson", "nb", "zip", "zinb", "p-cisgenome", "nb-cisgenome", "ec"]
 eps = 0.00001
 
 def uniq(data):
@@ -167,13 +167,13 @@ class Pvalue_fitting:
 ## score_ind = ["coverage", "rank", "poisson", "nb", "zinb", "p-cisgenome" "nb-cisgenome"]
 
 def dict_to_real_value(data, dictionary, score_ind):
-    if score_ind in [0, 1]:
+    if score_ind in [-1, 0, 1]:
         return [dictionary[x] for x in data]
     else:
         return [100 if dictionary[x] < 1e-100 else int(np.round(-np.log10(dictionary[x]))) for x in data]
 
 def score_to_pvalue(data, score_ind, output=False, head='plot_fitting_'):
-    if score_ind == 0:
+    if score_ind <= 0:
         return data
     elif score_ind == 1:
         return list(map(lambda x: int(np.round(float(x-1)/len(data)*1000)), rankdata(data, method='min')))
@@ -197,6 +197,9 @@ def get_dict_for_score_to_pvalue_conversion(data, score_ind):
 def check_dist_model(dist_model):
     global DIST_LIST
     if dist_model in DIST_LIST:
-        return DIST_LIST.index(dist_model)
+        if dist_model == "ec":
+            return -1
+        else:
+            return DIST_LIST.index(dist_model)
     else:
         return 0

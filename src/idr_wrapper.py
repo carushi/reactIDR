@@ -84,11 +84,11 @@ def only_estimate_model_params(
         r1, r2,
         theta_0,
         max_iter=100, convergence_eps=1e-10,
-        fix_mu=False, fix_sigma=False, image=False, header=""):
+        fix_mu=False, fix_sigma=False, image=False, header="", grid=True):
 
     theta, loss = only_EMP_with_pseudo_value_algorithm(
         r1, r2, theta_0, N=max_iter, EPS=convergence_eps,
-        fix_mu=fix_mu, fix_sigma=fix_sigma, image=image, header=header)
+        fix_mu=fix_mu, fix_sigma=fix_sigma, image=image, header=header, grid=grid)
 
     return theta, loss
 
@@ -100,20 +100,22 @@ def only_fit_model_and_calc_idr(r1, r2,
                            max_iter=idr.MAX_ITER_DEFAULT,
                            convergence_eps=idr.CONVERGENCE_EPS_DEFAULT,
                            image=False, header="",
-                           fix_mu=False, fix_sigma=False):
+                           fix_mu=False, fix_sigma=False, grid=False):
     # in theory we would try to find good starting point here,
     # but for now just set it to something reasonable
     starting_point = (idr.DEFAULT_MU, idr.DEFAULT_SIGMA, idr.DEFAULT_RHO, idr.DEFAULT_MIX_PARAM)
     # max_iter = 1000
     # print(idr.DEFAULT_RHO)
     # starting_point = (1, 0.3, 0.8, 0.3)
+    if not grid:
+        grid = (len(r1) < 100000)
     idr.log("Starting point: [%s]"%" ".join("%.2f" % x for x in starting_point))
     theta, loss = only_estimate_model_params(
         r1, r2,
         starting_point,
         max_iter=max_iter,
         convergence_eps=convergence_eps,
-        fix_mu=fix_mu, fix_sigma=fix_sigma, image=image, header=header, grid=(len(r1) < 100000))
+        fix_mu=fix_mu, fix_sigma=fix_sigma, image=image, header=header, grid=grid)
 
     idr.log("Finished running IDR on the datasets", 'VERBOSE')
     idr.log("Final parameter values: [%s]"%" ".join("%.2f" % x for x in theta))

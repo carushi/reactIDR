@@ -8,6 +8,7 @@ MAXLINE=-1
 
 def parse_line(line, func):
     contents = line.rstrip('\n').split('\t')
+    # return contents[0], list(map(int, map(float, contents[1].split(';'))))
     return contents[0], list(map(func, contents[1].split(';')))
 
 def parse_file_pars(file, func):
