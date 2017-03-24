@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 test*.py
+parasor_idr_auc.py
+plot_reproducible_peak.py
+
 # C extensions
 *.so
 

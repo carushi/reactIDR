@@ -15,6 +15,7 @@ def get_parser():
     parser.add_argument("--pi", dest="p", type=float, help="ratio of reproducible group", default=0.3, required=False)
     parser.add_argument("--grid", dest="grid", action="store_true", help="grid search for initial IDR parameters (default: false)", required=False)
     parser.add_argument("--test", dest="test", action="store_true", help="", required=False)
+    parser.add_argument("--output", dest="output", type=str, help="output filename", required=False, default="idr_output.csv")
     parser.set_defaults(grid=False, test=False, control=[])
     return parser
 
@@ -27,13 +28,14 @@ class IDRHmm:
         self.params = [arg.mu, arg.sigma, arg.rho, arg.p]
         self.grid = arg.grid
         self.test = arg.test
+        self.output = arg.output
 
     def read_data_pars_format(self):
         data = [[{chr(0):[0]}, {chr(0):[0]}]]
         for key, one, two in parse_score_iterator(self.input[0][0]):
             data[0][0][key] = one
             data[0][1][key] = two
-        if len(self.input[1]) > 1:
+        if len(self.input[1]) >= 1:
             data.append([{chr(0):[0]}, {chr(0):[0]}])
             for key, one, two in parse_score_iterator(self.input[1][0]):
                 data[1][0][key] = one
@@ -42,9 +44,10 @@ class IDRHmm:
 
     def infer_reactive_sites(self):
         hclass = 2
-        if self.input[1] != []:   hclass = 3
+        if self.input[1] != []:
+            hclass = 3
         data = self.read_data_pars_format()
-        self.para = ParamFitHMM(hclass, data, self.sample_size, self.params)
+        self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.test, self.output)
         if self.test:
             self.para.hmm_EMP_with_pseudo_value_algorithm_test(self.grid)
             return

@@ -92,6 +92,10 @@ def only_estimate_model_params(
 
     return theta, loss
 
+def get_idr_value(r1, r2, theta):
+    localIDRs, IDR = idr.idr.calc_IDR(np.array(theta), r1, r2)
+    return localIDRs, IDR
+
 def only_fit_model_and_calc_idr(r1, r2,
                             mu = 1,
                             sigma = 0.3,

@@ -10,6 +10,8 @@ import math
 import zero_inflated_p
 
 DIST_LIST = ["coverage", "rank", "poisson", "nb", "zip", "zinb", "p-cisgenome", "nb-cisgenome", "ec"]
+SCORE_LIST = ["icshape", "pars", "ldr"]
+
 eps = 0.00001
 
 def uniq(data):
@@ -203,3 +205,105 @@ def check_dist_model(dist_model):
             return DIST_LIST.index(dist_model)
     else:
         return 0
+
+def check_reactivity(react_model):
+    global SCORE_LIST
+    if react_model in SCORE_LIST:
+        return SCORE_LIST.index(react_model)
+    else:
+        return 0
+
+def score_to_reactivity(cont, case, score_ind, output=False, head='plot_fitting_'):
+    if score_ind <= 0:
+        return data
+    elif score_ind == 1:
+        return list(map(lambda x: int(np.round(float(x-1)/len(data)*1000)), rankdata(data, method='min')))
+    pvalue = Pvalue_fitting(data)
+    dictionary = dict(zip(pvalue.uniq_list, pvalue.num_to_pvalue_dict(score_ind)))
+    if output:
+        if score_ind in [2, 6]: pvalue.plot_fitting_poisson(head)
+        if score_ind in [3, 7]: pvalue.plot_fitting_nb(head)
+        if score_ind in [4]:    pvalue.plot_fitting_zip(head)
+    # print(list(dictionary.keys()))
+    # print(pvalue.uniq_list)
+    assert len(list(dictionary.keys())) == len(pvalue.uniq_list)
+    return dict_to_real_value(data, dictionary, score_ind)
+    # return [dictionary[x] for x in data]
+
+
+# def calc_icshape_norm_factor(self, scorefile):
+#     srep_list = utility.parse_score_iterator(self.dir+scorefile)
+#     all = []
+#     for vecs in srep_list:
+#         for vec in vecs[1:]:
+#             vec = vec[self.trim:max(self.trim, len(vec)-self.trim)]
+#         # vec = [x for x in vec if x > 0]
+#             all += vec
+#     all.sort()
+#     high = [all[i] for i in range(math.floor(len(all)*90./100.), math.ceil(len(all)*95./100.))]
+#     if len(high) == 0:
+#         return 1.
+#     else:
+#         return max(1, np.mean(high))
+
+# def calc_icshape_norm_trans_factor(self, vec, start, end):
+#     reduced = [ v for i, v in enumerate(vec) if i >= start and i < end ]
+#     reduced.sorted()
+#     tstart, tend = math.floor(len(reduced)*90/100), math.ceil(len(reduced)*95/100))]
+#     norm = np.mean([reduced[i] for i in range(int(len(reduced)*90/100), int(len(reduced)*95/100))])
+#     return norm
+
+# def calc_icshape_reactivity(self, contTable, caseTable, alpha=0.25):
+#     background = float(max(1, sum([ x for x in range(self.trim, max(self.trim, np.shape(contTable)[0]))])))
+#     icSHAPE = [(caseTable[i][2]-contTable[i][2]*alpha)/(max(1., contTable[i][0])/background) for i in range(np.shape(contTable)[0])]
+#     sortl = sorted(icSHAPE[self.trim:max(self.trim, len(icSHAPE)-self.trim)])
+#     if len(sortl) == 0:
+#         return [0.]*len(icSHAPE)
+#     tmin, tmax = sortl[max(0, int(5./100.*len(sortl))-1)], sortl[min(len(sortl)-1, int(95./100.*len(sortl))-1)]
+#     if tmin == tmax:
+#         return [0.]*len(icSHAPE)
+#     return [max(0., min(1., (x-tmin)/(tmax-tmin))) for i, x in enumerate(icSHAPE)]
+
+# def calc_icshape_norm(self, sscorefile, vscorefile):
+#     if True:
+#         return self.calc_icshape_norm_factor(sscorefile), self.calc_icshape_norm_factor(vscorefile)
+#     else:
+#         return 1., 1.
+
+# def calc_pars_norm_factor(self, srep, vrep):
+#     ks = max(sum([sum(t[1])+sum(t[2]) for t in srep]), 1)
+#     kv = max(sum([sum(t[1])+sum(t[2]) for t in vrep]), 1)
+#     return (ks+kv)/(2.*float(ks)), (ks+kv)/(2.*float(kv))
+
+# def get_mean_pars(self, rep1Vec, rep2Vec, norm = 1):
+#     return [np.log10(norm)+np.log10(np.mean(rep1Vec[max(0, i-2):min(len(rep1Vec), i+3)]+rep2Vec[max(0, i-2):min(len(rep1Vec), i+3)])+5.) for i in range(len(rep1Vec))]
+
+
+# def calc_ldr(self, s1, v1, control = False):
+#     if control:
+#         result_c = ''
+#         s1.sort()
+#         for i in range(len(s1)):
+#             for j in range(i+1, len(s1)):
+#                 result_c += str(np.log10(s1[j]/s1[i]))+","
+#         return result_c[0:-1]
+#     else:
+#         result_t = ''
+#         for s in s1:
+#             for v in v1:
+#                 result_t += str(np.log10(s/v))+","
+#         return result_t[0:-1]
+
+# def calc_ldr_features(self, s1, v1):
+#     return [sum(s)/sum(v) for s, v in zip(s1, v1)]
+
+# def calc_ldr_distribution(self, svec, vvec, scov, vcov):
+#     if len(scov) == 0 or len(vcov) == 0:
+#         return ['']*len(svec), ['']*len(svec)
+#     s1 = [[svec[i][j]/max(1., scov[i][j]) for j in range(len(svec[i]))] for i in range(len(svec))]
+#     v1 = [[vvec[i][j]/max(1., vcov[i][j]) for j in range(len(vvec[i]))] for i in range(len(vvec))]
+#     ldr = self.calc_ldr_features(s1, v1)
+#     ldr_c = [self.calc_ldr(s1[i], s1[i]) for i in range(len(svec))]
+#     ldr_t = [self.calc_ldr(s1[i], v1[i], True) for i in range(len(svec))]
+#     return [ldr, ldr_c, ldr_t]
+

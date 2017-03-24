@@ -8,6 +8,8 @@ from idr.optimization import compute_pseudo_values, EM_iteration, CA_iteration, 
 from math import pi, exp, expm1, sqrt
 from scipy.misc import logsumexp
 from scipy.special import erf
+import fastpo
+
 from __init__ import *
 
 def logsumexp_inf(x):
@@ -27,8 +29,10 @@ def diffexp_inf(x, y):
 
 def log_lhd_loss(r1, r2, theta):
     mu, sigma, rho, p = theta
-    z1 = hmm_compute_pseudo_values(r1, mu, sigma, p)
-    z2 = hmm_compute_pseudo_values(r2, mu, sigma, p)
+    # z1 = hmm_compute_pseudo_values(r1, mu, sigma, p)
+    # z2 = hmm_compute_pseudo_values(r2, mu, sigma, p)
+    z1 = fastpo.c_compute_pseudo_values(r1, mu, sigma, p)
+    z2 = fastpo.c_compute_pseudo_values(r2, mu, sigma, p)
     return calc_mix_gaussian_lhd(z1, z2, theta)
 
 def calc_gaussian_lhd(x1, x2, theta):
@@ -45,9 +49,9 @@ def calc_gaussian_lhd_1dim(x, mu, sigma):
 
 def calc_mix_gaussian_lhd(x1, x2, theta):
     mu, sigma, rho, p = theta
-    signal = calc_gaussian_lhd(x1, x2, (mu, sigma, rho, 0.))
-    noise = calc_gaussian_lhd(x1, x2, (0., 1., 0., 0))
-    loglike = ([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
+    signal = [calc_gaussian_lhd(t1, t2, (mu, sigma, rho, 0.)) for t1, t2 in zip(x1, x2)]
+    noise = [calc_gaussian_lhd(t1, t2, (0., 1., 0., 0)) for t1, t2 in zip(x1, x2)]
+    loglike = np.asarray([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
     return loglike.sum()
 
 def csdf(x):
@@ -147,29 +151,36 @@ def my_cdf(x, mu, sigma, p):
 def my_cdf_i(r, mu, sigma, p, lb, ub):
     return brentq(lambda x: my_cdf(x, mu, sigma, p) - r, lb, ub)
 
-def my_compute_pseudo_values(r, mu, sigma, p):
+def my_compute_pseudo_values(r, mu, sigma, p, lb = -10, ub = 10):
     pseudo_values = []
     for x in r:
         new_x = float(x+1)/(len(r)+1)
-        pseudo_values.append( my_cdf_i( new_x, mu, sigma, p, -10, 10) )
+        pseudo_values.append( my_cdf_i( new_x, mu, sigma, p, lb, ub ) )
     return pseudo_values
 
 def hmm_compute_pseudo_values(vec, mu, sigma, p):
-    return my_compute_pseudo_values(vec, mu, sigma, p)
-    # return compute_pseudo_values(vec, mu, math.sqrt(sigma), 1-p)
+    pseudo_values = []
+    z = np.zeros(len(vec), dtype=float)
+    try:
+        pseudo_values = fastpo.c_my_compute_pseudo_values(vec, z, mu, sigma, p, EPS)
+        # pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p)
+    except:
+        pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p, -100, 100)
+    return pseudo_values
 
 def hmm_grid_search(r1, r2):
     res = []
     best_theta = None
     max_log_lhd = -1e100
-    iter_count = 20
+    iter_count = 5
     for mu in np.linspace(0.1, 5, num=iter_count):
         print("# ", mu)
+        sys.stdout.flush()
         for sigma in np.linspace(0.5, 3, num=iter_count):
             for rho in np.linspace(0.1, 0.9, num=iter_count):
                 for pi in np.linspace(0.1, 0.9, num=iter_count):
-                    z1 = hmm_compute_pseudo_values(r1, mu, sigma, p)
-                    z2 = hmm_compute_pseudo_values(r2, mu, sigma, p)
+                    z1 = hmm_compute_pseudo_values(r1, mu, sigma, pi)
+                    z2 = hmm_compute_pseudo_values(r2, mu, sigma, pi)
                     log_lhd = calc_gaussian_lhd(z1, z2, (mu, sigma, rho, pi)).sum()
                     if log_lhd > max_log_lhd:
                         best_theta = (mu, sigma, rho, pi)
@@ -475,7 +486,6 @@ class QfuncGrad:
         for i in range(0, self.msize):
             self.grad_merge[0][i] = self.grad_merge_mu(i)
             self.grad_merge[1][i] = self.grad_merge_sigma(i)
-        print(self.grad_merge)
 
     def set_grad(self):
         for r in [0, 1]:

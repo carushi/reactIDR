@@ -264,8 +264,9 @@ class reactIDR:
 
     def get_idr_value(self, index, theta):
         r1, r2 = self.get_concatenated_rank_scores(index, True)
-        localIDRs, IDR = idr.idr.calc_IDR(np.array(theta), r1, r2)
-        return localIDRs, IDR
+        return get_idr_value(r1, r2, theta)
+        # localIDRs, IDR = idr.idr.calc_IDR(np.array(theta), r1, r2)
+        # return localIDRs, IDR
 
     def fit_and_calc_IDR(self, file, cidx, sidx, index=None, sampled=None):
         if type(index) == type(None):
