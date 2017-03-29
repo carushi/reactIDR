@@ -2,9 +2,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
-test*.py
-parasor_idr_auc.py
-plot_reproducible_peak.py
+temp
+test_script
+misc
+.DS_Store
 
 # C extensions
 *.so

@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import math
 
-# rfile = "/Users/cawa/Research/RiboSNitch/data/rRNA/rRNA_18S_ref.fa"
+# rfile = "../test_data/rRNA_18S_ref.fa"
 # ref = ''
 # with open(rfile) as f:
 #     ref = f.readlines()[1].rstrip('\n')
