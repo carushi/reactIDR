@@ -108,3 +108,15 @@ def c_calc_gaussian_lhd(double x1, double x2, list theta):
     cdef double loglik  = (-log(2.*pi*sigma)-0.5*log(1-rho**2)-(diff_x1**2-2*rho*diff_x1*diff_x2+diff_x2**2)/(2*(1-rho**2)*sigma))
     return loglik
 
+
+def c_calc_gaussian_lhd_3dim(double x1, double x2, double x3, list theta):
+    cdef double mu      = theta[0]
+    cdef double sigma   = theta[1]
+    cdef double rho     = theta[2]
+    cdef double diff_x1 = x1-mu
+    cdef double diff_x2 = x2-mu
+    cdef double diff_x3 = x3-mu
+    cdef double pi      = 3.14159265358979323846264338327950288419716939937510582
+    cdef double first  = -3.*log(2.*pi*sigma)-0.5*log((2.*rho+1.)*(1.-rho)**2)
+    cdef double second = -((1.+rho)*(diff_x1**2+diff_x2**2+diff_x3**2)-2*rho*(diff_x1*diff_x2+diff_x2*diff_x3+diff_x3*diff_x1))/(2.*(2.*rho+1)*(1.-rho)*sigma)
+    return first+second

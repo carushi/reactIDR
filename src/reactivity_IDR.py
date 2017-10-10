@@ -123,7 +123,7 @@ class reactIDR:
         plot_density(IDR, ofile)
 
     def ordered_common_transcript(self):
-        return sorted(list(common_transcript(self.dicts[0], self.dicts[1])))
+        return sorted(list(utility.common_transcript(self.dicts[0], self.dicts[1])))
 
     def sampled_scores(self, sample=True):
         smax = max(0, self.options.sample_size)
@@ -219,9 +219,9 @@ class reactIDR:
                 f.write(key)
                 for i in [0, 1]:
                     if key in self.dicts[i]:
-                        tdict = self.dicts[i][key]
-                        if not self.options.omit or np.max(tdict) > 0:
-                            self.dicts[i][key] = pvalue.score_to_pvalue(tdict, sidx, self.options.reverse)
+                        tdata = self.dicts[i][key]
+                        if not self.options.omit or np.max(tdata) > 0:
+                            self.dicts[i][key] = pvalue.score_to_pvalue(tdata, sidx, self.options.reverse)
                     f.write(self.get_print_str_score(key, self.dicts[i]))
                 f.write('\n')
 

@@ -2,15 +2,14 @@ from scipy.misc import logsumexp
 import numpy as np
 import math
 from scipy.optimize import brentq
-from idr.inv_cdf import cdf, cdf_i, c_compute_pseudo_values
-
-from idr.optimization import compute_pseudo_values, EM_iteration, CA_iteration, log_lhd_loss, grid_search
+from multiprocessing import Pool
 from math import pi, exp, expm1, sqrt
 from scipy.misc import logsumexp
 from scipy.special import erf
 import fastpo
 
 from __init__ import *
+
 
 def logsumexp_inf(x):
     temp = [v for v in x if v != -float('infinity')]
@@ -22,30 +21,9 @@ def diffexp_inf(x, y):
     elif y == -float('infinity'): return exp(x)
     elif x < y:   return exp(y)*expm1(x-y)
     else:   return exp(x)*expm1(y-x)
-
     temp = [v for v in x if v != -float('infinity')]
     if len(temp) == 0:  return -float('infinity')
     return logsumexp(temp)
-
-def log_lhd_loss(r1, r2, theta):
-    mu, sigma, rho, p = theta
-    # z1 = hmm_compute_pseudo_values(r1, mu, sigma, p)
-    # z2 = hmm_compute_pseudo_values(r2, mu, sigma, p)
-    z1 = fastpo.c_compute_pseudo_values(r1, mu, sigma, p)
-    z2 = fastpo.c_compute_pseudo_values(r2, mu, sigma, p)
-    return calc_mix_gaussian_lhd(z1, z2, theta)
-
-def calc_gaussian_lhd(x1, x2, theta):
-    mu, sigma, rho, _ = theta
-    diff_x1 = x1-mu
-    diff_x2 = x2-mu
-    loglik = (-math.log(2.*pi*sigma)-0.5*math.log(1-rho**2)-(diff_x1**2-2*rho*diff_x1*diff_x2+diff_x2**2)/(2*(1-rho**2)*sigma))
-    return loglik
-
-def calc_gaussian_lhd_1dim(x, mu, sigma):
-    norm_x = (x-mu)/sqrt(sigma)
-    loglik = (-0.5*(math.log(2.*pi*sigma))-(norm_x**2)/2.)
-    return loglik
 
 def calc_mix_gaussian_lhd(x1, x2, theta):
     mu, sigma, rho, p = theta
@@ -54,8 +32,105 @@ def calc_mix_gaussian_lhd(x1, x2, theta):
     loglike = np.asarray([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
     return loglike.sum()
 
+def calc_mix_gaussian_lhd_3dim(x1, x2, x3, theta):
+    mu, sigma, rho, p = theta
+    signal = [calc_gaussian_lhd_3dim(t1, t2, t3, (mu, sigma, rho, 0.)) for t1, t2, t3 in zip(x1, x2, x3)]
+    noise = [calc_gaussian_lhd_3dim(t1, t2, t3, (0., 1., 0., 0)) for t1, t2, t3 in zip(x1, x2, x3)]
+    loglike = np.asarray([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
+    return loglike.sum()
+
+def calc_mix_gaussian_lhd_23dim(x1, x2, x3, theta):
+    if x3 is not None:
+        return calc_mix_gaussian_lhd_3dim(x1, x2, x3, theta)
+    else:
+        return calc_mix_gaussian_lhd(x1, x2, theta)
+
+def log_lhd_loss_3dim(r1, r2, r3, theta):
+    mu, sigma, rho, p = theta
+    z1 = np.zeros(len(r1), dtype=float)
+    z2 = np.zeros(len(r2), dtype=float)
+    z3 = np.zeros(len(r3), dtype=float)
+    z1 = fastpo.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
+    z2 = fastpo.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
+    z3 = fastpo.c_my_compute_pseudo_values(r3, z3, mu, sigma, p, EPS)
+    return calc_mix_gaussian_lhd_3dim(z1, z2, z3, theta)
+
+def log_lhd_loss(r1, r2, theta):
+    mu, sigma, rho, p = theta
+    z1 = np.zeros(len(r1), dtype=float)
+    z2 = np.zeros(len(r2), dtype=float)
+    z1 = fastpo.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
+    z2 = fastpo.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
+    return calc_mix_gaussian_lhd(z1, z2, theta)
+
+def log_lhd_loss_23dim(theta, r1, r2, r3=None):
+    if r3 is not None:
+        return log_lhd_loss_3dim(r1, r2, r3, theta)
+    else:
+        return log_lhd_loss(r1, r2, theta)
+
+def calc_gaussian_lhd_3dim(x1, x2, x3, theta):
+    mu, sigma, rho, _ = theta
+    d1 = x1-mu
+    d2 = x2-mu
+    d3 = x3-mu
+    inv_mat = -3.*math.log(2.*pi)-math.log(1.-rho)-0.5*math.log((2.*rho+1.)*sigma)
+    inv_exp = 2.*(1-rho)*(2.*rho+1.)*sigma
+    loglik = inv_mat-((1+rho)*(d1**2+d2**2+d3**2)-2*rho(d1*d2+d1*d3+d2*d3))/inv_exp
+    return loglik
+
+def calc_gaussian_lhd(x1, x2, theta):
+    mu, sigma, rho, _ = theta
+    diff_x1 = x1-mu
+    diff_x2 = x2-mu
+    loglik = (-math.log(2.*pi*sigma)-0.5*math.log(1-rho**2)-(diff_x1**2-2*rho*diff_x1*diff_x2+diff_x2**2)/(2*(1-rho**2)*sigma))
+    # loglik = (-math.log(2.*pi)-0.5*math.log(sigma*(1-rho**2)-(diff_x1**2-2*rho*diff_x1*diff_x2+diff_x2**2)/(2*(1-rho**2)*sigma))
+    return loglik
+
+def calc_gaussian_lhd_1dim(x, mu, sigma):
+    norm_x = (x-mu)/sqrt(sigma)
+    loglik = (-0.5*(math.log(2.*pi*sigma))-(norm_x**2)/2.)
+    return loglik
+
+# def calc_mix_gaussian_lhd(x1, x2, theta):
+#     mu, sigma, rho, p = theta
+#     signal = [calc_gaussian_lhd(t1, t2, (mu, sigma, rho, 0.)) for t1, t2 in zip(x1, x2)]
+#     noise = [calc_gaussian_lhd(t1, t2, (0., 1., 0., 0)) for t1, t2 in zip(x1, x2)]
+#     loglike = np.asarray([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
+#     return loglike.sum()
+
+def calc_post_membership_prbs_23dim(z1, z2, z3, theta):
+    mu, sigma, rho, p = theta
+    if z3 is not None:
+        noise_log_lhd = calc_gaussian_lhd_3dim(z1, z2, z3, (0, 1, 0, 1))
+        signal_log_lhd = calc_gaussian_lhd_3dim(z1, z2, z3, theta)
+    else:
+        noise_log_lhd = calc_gaussian_lhd(z1, z2, (0, 1, 0, 1))
+        signal_log_lhd = calc_gaussian_lhd(z1, z2, theta)
+
+    ez = p*np.exp(signal_log_lhd)/(
+        p*np.exp(signal_log_lhd)+(1-p)*np.exp(noise_log_lhd))
+
+    return ez
+
 def csdf(x):
     return 0.5*(erf(x/sqrt(2))+1)
+
+def logR_3dim(x1, x2, x3, params):
+    mu, sigma, rho, p = params
+    return calc_gaussian_lhd_3dim(x1, x2, x3, params)
+
+def logI(x1, x2, x3, params):
+    mu, sigma, rho, p = params
+    return calc_gaussian_lhd(x1, x2, x3, (0., 1., 0., 0))
+
+def logS_3dim(x1, x2, x3, params):
+    mu, sigma, rho, p = params
+    f1 = logS_single(x1, mu, sigma, rho, p)
+    f2 = logS_single(x2, mu, sigma, rho, p)
+    f3 = logS_single(x3, mu, sigma, rho, p)
+    return f1+f2+f3
+
 
 def logR(x1, x2, params):
     mu, sigma, rho, p = params
@@ -163,29 +238,41 @@ def hmm_compute_pseudo_values(vec, mu, sigma, p):
     z = np.zeros(len(vec), dtype=float)
     try:
         pseudo_values = fastpo.c_my_compute_pseudo_values(vec, z, mu, sigma, p, EPS)
-        # pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p)
     except:
         pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p, -100, 100)
     return pseudo_values
 
-def hmm_grid_search(r1, r2):
+def hmm_grid_search_multi_cores(thread, r1, r2, r3=None):
     res = []
     best_theta = None
     max_log_lhd = -1e100
-    iter_count = 5
-    for mu in np.linspace(0.1, 5, num=iter_count):
-        print("# ", mu)
-        sys.stdout.flush()
-        for sigma in np.linspace(0.5, 3, num=iter_count):
-            for rho in np.linspace(0.1, 0.9, num=iter_count):
-                for pi in np.linspace(0.1, 0.9, num=iter_count):
-                    z1 = hmm_compute_pseudo_values(r1, mu, sigma, pi)
-                    z2 = hmm_compute_pseudo_values(r2, mu, sigma, pi)
-                    log_lhd = calc_gaussian_lhd(z1, z2, (mu, sigma, rho, pi)).sum()
+    args = []
+    for mu in np.linspace(0.1, 5, num=10):
+        for sigma in np.linspace(0.5, 3, num=10):
+            for rho in np.linspace(0.1, 0.9, num=10):
+                for pi in np.linspace(0.1, 0.9, num=10):
+                    args.append((mu, sigma, rho, pi))
+    pool = Pool(thread)
+    log_lhd = pool.starmap(log_lhd_loss_23dim, [(arg, r1, r2, r3) for arg in args])
+    pool.close()
+    max_index, max_value = max(enumerate(log_lhd), key=lambda x: x[1])
+    best_theta, max_log_lhd = args[max_index], log_lhd[max_index]
+    return best_theta
+
+def hmm_grid_search(r1, r2, r3=None):
+    res = []
+    best_theta = None
+    max_log_lhd = -1e100
+    for mu in np.linspace(0.1, 5, num=10):
+        for sigma in np.linspace(0.5, 3, num=10):
+            for rho in np.linspace(0.1, 0.9, num=10):
+                for pi in np.linspace(0.1, 0.9, num=10):
+                    log_lhd = log_lhd_loss_23dim((mu, sigma, rho, pi), r1, r2, r3)
                     if log_lhd > max_log_lhd:
-                        best_theta = (mu, sigma, rho, pi)
+                        best_theta = [mu, sigma, rho, pi]
                         max_log_lhd = log_lhd
     return best_theta
+
 
 def expR_grad_x(x1, x2, params): # divided by R
     mu, sigma, rho, p = params
@@ -217,82 +304,13 @@ def fx_dfdx(x1, x2, index, params, rep):
 def independent_grad(x1, x2, params):
     return 0.0
 
-# def grad_merge_mu(x1, params):
-#     mu, sigma, rho, p = params
-#     return -p/math.sqrt(sigma)*exp(calc_gaussian_lhd_1dim(x1, mu, sigma))
-
-# def grad_merge_sigma(x1, params):
-#     mu, sigma, rho, p = params
-#     return -p*(x1-mu)/(2.*sigma**(3/2))*exp(calc_gaussian_lhd_1dim(x1, mu, sigma))
-
-# def expR_grad_mu(x1, x2, params): # divided by R
-#     mu, sigma, rho, p = params
-#     return (x1+x2-2*mu)/(sigma*(1+rho))
-
-# def expS_grad_mu(x1, x2, params):
-#     mu, sigma, rho, p = params
-#     N1r = exp(calc_gaussian_lhd_1dim(x1, mu, sigma))
-#     N2r = exp(calc_gaussian_lhd_1dim(x2, mu, sigma))
-#     N1i = exp(calc_gaussian_lhd_1dim(x1, 0., 1.))
-#     N2i = exp(calc_gaussian_lhd_1dim(x2, 0., 1.))
-#     return p*N1r*(x1-mu)/sigma*(p*N2r+(1-p)*N2i)+p*N2r*(x2-mu)/sigma*(p*N1r+(1-p)*N1i)
-
-# def expR_grad_sigma(x1, x2, params): # divided by R
-#     mu, sigma, rho, p = params
-#     return -1/sigma+((x1-mu)**2+(x2-mu)**2-2*rho*(x1-mu)*(x2-mu))/(2*sigma**2*(1-rho**2))
-
-# def expS_grad_sigma(x1, x2, params):
-#     mu, sigma, rho, p = params
-#     N1r = exp(calc_gaussian_lhd_1dim(x1, mu, sigma))
-#     N2r = exp(calc_gaussian_lhd_1dim(x2, mu, sigma))
-#     N1i = exp(calc_gaussian_lhd_1dim(x1, 0., 1.))
-#     N2i = exp(calc_gaussian_lhd_1dim(x2, 0., 1.))
-#     x1_grad = -1/(2*sigma)+((x1-mu)**2)/(2*sigma**2)
-#     x2_grad = -1/(2*sigma)+((x2-mu)**2)/(2*sigma**2)
-#     return p*N1r*x1_grad*(p*N2r+(1-p)*N2i)+p*N2r*x2_grad*(p*N1r+(1-p)*N1i)
-
-# def expR_grad_rho(x1, x2, params):
-#     mu, sigma, rho, p = params
-#     N12r = calc_gaussian_lhd(x1, x2, params)
-#     first = (rho/(1-rho**2))
-#     second = ((1+rho**2)*(x1-mu)*(x2-mu)-rho*((x1-mu)**2+(x2-mu)**2))/(sigma*(1-rho**2)**2)
-#     return (first+second)
-
-# def grad_cond(x1, x2, params, gfuncR, gfuncS, funcR):
-#     print('grad_cond', gfuncR(x1, x2, params), exp(logS(x1, x2, params)), -gfuncS(x1, x2, params), exp(funcR(x1, x2, params)), exp(-2.*logS(x1, x2, params)))
-#     return (gfuncR(x1, x2, params)*exp(logS(x1, x2, params))-gfuncS(x1, x2, params))*exp(funcR(x1, x2, params)-2.*logS(x1, x2, params))
-
-# def emission_grad_mu(x1, x2, params, rep=True):
-#     if rep:
-#         grad_cond_mu = grad_cond(x1, x2, params, expR_grad_mu, expS_grad_mu, logR)
-#     else:
-#         grad_cond_mu = grad_cond(x1, x2, params, independent_grad, expS_grad_mu, logI)
-#     print("mu_grad: ", grad_cond_mu, grad_merge_mu(x1, params)*fx_dfdx(x1, x2, 0, params, rep), grad_merge_mu(x2, params)*fx_dfdx(x1, x2, 1, params, rep))
-#     return grad_cond_mu-grad_merge_mu(x1, params)*fx_dfdx(x1, x2, 0, params, rep)-grad_merge_mu(x2, params)*fx_dfdx(x1, x2, 1, params, rep)
-
-# def emission_grad_sigma(x1, x2, params, rep=True):
-#     if rep:
-#         grad_cond_sigma = grad_cond(x1, x2, params, expR_grad_sigma, expS_grad_sigma, logR)
-#     else:
-#         grad_cond_sigma = grad_cond(x1, x2, params, independent_grad, expS_grad_sigma, logI)
-#     print('sigma_grad: ', grad_cond_sigma, grad_merge_sigma(x1, params)*fx_dfdx(x1, x2, 0, params, rep), grad_merge_sigma(x2, params)*fx_dfdx(x1, x2, 1, params, rep))
-#     return grad_cond_sigma-grad_merge_sigma(x1, params)*fx_dfdx(x1, x2, 0, params, rep)-grad_merge_sigma(x2, params)*fx_dfdx(x1, x2, 1, params, rep)
-
-# def emission_grad_rho(x1, x2, params, rep=True):
-#     if rep:
-#         grad = grad_cond(x1, x2, params, expR_grad_rho, independent_grad, logR)
-#         print('rho_grad: ', grad)
-#         return grad
-#     else:
-#         return 0.0
 
 class QfuncGrad:
     """docstring for ClassName"""
-    def __init__(self, x1, x2, params, msize = 2):
-        self.x1 = x1
-        self.x2 = x2
+    def __init__(self, params, xvar):
+        self.x1, self.x2 = xvar
         self.params = params
-        self.msize = msize
+        self.msize = len(xvar)
         self.init_all_variables()
         self.set_gaussian_component()
         self.set_grad_component()
@@ -308,6 +326,7 @@ class QfuncGrad:
         self.N12i = 0.
         self.S1 = 0.
         self.S2 = 0.
+        self.s12 = 0.
         self.S = 0.
         self.logR = 0.
         self.logI = 0.
@@ -533,70 +552,314 @@ class QfuncGrad:
                     self.grad_list_log[r][p] = self.grad_list_log_raw[r][p]-(self.grad_merge[p][0]*self.fx_dfdx_list_log[0][r]+self.grad_merge[p][1]*self.fx_dfdx_list_log[1][r])
                     # print(self.grad_list_log[r][p])
 
+class QfuncGrad3dim():
+    """docstring for ClassName"""
+    def __init__(self, params, xvar):
+        # if len(xvar) == 2:
+        #     super().__init__(params, xvar)
+        # else:
+        self.x1, self.x2, self.x3 = xvar
+        self.xvar = xvar
+        self.params = params
+        self.msize = len(self.xvar)
+        self.init_all_variables_3dim(self.msize)
+        self.set_gaussian_component_3dim()
+        self.set_grad_component_3dim()
+        self.set_grad_3dim()
+        self.set_grad_log_3dim()
 
-def calc_gaussian_mix_q_func_gradient(param, x1, x2, rep, fix_mu, fix_sigma):
-    mu, sigma, rho, p = theta
-    if fix_mu:
-        mu_grad = [0.]*len(x1)
-    else:
-        mu_grad = [emission_grad_mu(i, j, params, rep) for i, j in zip(x1, x2)]
-    if fix_sigma:
-        sigma_grad = [0.]*len(x1)
-    else:
-        sigma_grad = [emission_grad_sigma(i, j, params, rep) for i, j in zip(x1, x2)]
-    rho_grad = [emission_grad_rho(i, j, params, rep) for i, j in zip(x1, x2)]
-    # p_grad = [emission_grad_p(i, j, params, rep) for i, j in zip(x1, x2)]
-    return np.vstack((mu_grad, sigma_grad, rho_grad))
+    def init_all_variables(self, length):
+        self.Nr = [0.]*length
+        self.Ni = [0.]*length
+        self.N3r = 0.
+        self.N3i = 0.
+        self.S = [0.]*length
+        self.S3 = 0.
+        self.s_xk_squared = 0.
+        self.s_xi_xj = 0.
+        self.logR = 0.
+        self.logI = 0.
+        self.logS = 0.
+        self.dfdx_list = [[]*length] # order x1, x2
+        self.fx_dfdx_list = [[]*length] # order x1, x2
+        self.dfdx_list_log = [[]*length] # order x1, x2
+        self.fx_dfdx_list_log = [[]*length] # order x1, x2
+        self.grad_merge = [[[0]*length]*2] # order mu x1,x2, sigma x1,x2
+        self.grad_list_raw = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho, without merginal terms
+        self.grad_list_log_raw = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho, without merginal terms
+        self.grad_list = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho
+        self.grad_list_log = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho
+
+    def debug_print(self):
+        print('Debug_qfunc_grad_class', self.x1, self.x2, self.x3, self.params, '-------')
+        for n, v in zip(self.__dict__.keys(), self.__dict__.values()):
+            print(n, v)
+
+    def set_gaussian_component(self):
+        mu, sigma, rho, p = self.params
+        for i, x in enumerate(self.xvar):
+            self.Nr[i] = exp(calc_gaussian_lhd_1dim(x, mu, sigma))
+            self.Ni[i] = exp(calc_gaussian_lhd_1dim(x, 0., 1.))
+            self.S[i] = p*self.Nr[i]+(1-p)*self.Ni[i]
+            self.s_xk_squared += (x-mu)**2
+            for j, y in enumerate(self.xvar[i+1:]):
+                self.s_xi_xj += (x-mu)*(y-mu)
+        self.N3r = exp(calc_gaussian_lhd_3dim(*self.xvar, theta=self.params))
+        self.N3i = exp(calc_gaussian_lhd_3dim(*self.xvar, theta=(0., 1., 0., 0.)))
+        self.S3 = np.prod(np.array(self.S))
+        self.logR = calc_gaussian_lhd_3dim(self.x1, self.x2, self.x3, self.params)
+        self.logI = calc_gaussian_lhd_3dim(self.x1, self.x2, self.x3, (0., 1., 0., 0.))
+        self.logS = sum([math.log(s) for s in self.S])
+
+    def rotated_xvar(self, index):
+        if index%3 == 0:
+            return self.x1, self.x2, self.x3
+        elif index%3 == 1:
+            return self.x2, self.x3, self.x1
+        elif index%3 == 2:
+            return self.x3, self.x1, self.x2
+
+    def rotated_s(self, index):
+        if index%3 == 0:
+            return self.S[0], self.S[1], self.S[2]
+        elif index%3 == 1:
+            return self.S[1], self.S[2], self.S[0]
+        elif index%3 == 2:
+            return self.S[2], self.S[0], self.S[1]
+
+
+    def expR_grad_x(self, index): # divided by R
+        mu, sigma, rho, p = self.params
+        x1, x2, x3 = self.rotated_xvar(index)
+        return -((x1-mu)*(1+rho)-rho*((x2-mu)+(x3-mu)))/(sigma*(1.-rho)*(2*rho+1))
+
+    def logR_grad_x(self, index):
+        mu, sigma, rho, p = self.params
+        x1, x2, x3 = self.rotated_xvar(index)
+        return -((x1-mu)*(1+rho)-rho*((x2-mu)+(x3-mu)))/(sigma*(1.-rho)*(2*rho+1))
+
+    def expI_grad_x(self, index): # divided by I
+        return -self.xvar[index]
+
+    def logI_grad_x(self, index):
+        return self.expI_grad_x(index)
+
+    def expS_grad_x(self, index):
+        mu, sigma, rho, p = self.params
+        x = self.xvar[index]
+        s = np.prod(np.array([s for i, s in enumerate(self.S) if i != index]))
+        Nr, Ni = self.Nr[index], self.Ni[index]
+        return -((x-mu)/sigma*p*Nr+x*(1-p)*self.Ni)*s
+
+    def logS_grad_x(self, index):
+        mu, sigma, rho, p = self.params
+        x = self.xvar[index]
+        s = self.S[index]
+        Nr, Ni = self.Nr[index], self.Ni[index]
+        return -((x-mu)/sigma*p*Nr+x*(1-p)*self.Ni)/s
+
+    def expR_grad_mu(self):
+        mu, sigma, rho, p = self.params
+        return (sum(self.xvar)-3.*mu)/(sigma*(2*rho+1))
+
+    def logR_grad_mu(self):
+        mu, sigma, rho, p = self.params
+        return self.expR_grad_mu()
+
+    def expI_grad_mu(self):
+        return 0.0
+
+    def logI_grad_mu(self):
+        return 0.0
+
+    def expS_grad_mu(self):
+        mu, sigma, rho, p = self.params
+        return sum([ (self.xvar[i]-mu)/sigma*self.S3 for i in range(self.msize)])
+
+    def logS_grad_mu(self):
+        mu, sigma, rho, p = self.params
+        return sum([p*self.Nr[i]*(self.xvar[i]-mu)/(sigma*self.S[i]) for i in range(self.msize)])
+
+    def expR_grad_sigma(self):
+        mu, sigma, rho, p = self.params
+        return -3/(2*sigma)+(self.s_xk_squared*(1.+rho)-2.*self.s_xi_xj*rho)/(2.*rho*(1.-rho)*(2.*rho+1.))
+
+    def logR_grad_sigma(self):
+        mu, sigma, rho, p = self.params
+        return self.expR_grad_sigma()
+
+    def expI_grad_sigma(self):
+        return 0.0
+
+    def logI_grad_sigma(self):
+        return 0.0
+
+    def expS_grad_sigma(self):
+        mu, sigma, rho, p = self.params
+        return sum([p*self.Nr[i]/self.S[i]*(-1./(2.*sigma)+(self.xvar[i]-mu)**2/(2.*sigma**2)) for i in range(self.msize)])*self.S3
+
+    def logS_grad_sigma(self):
+        mu, sigma, rho, p = self.params
+        return sum([p*self.Nr[i]/self.S[i]*(-1./(2.*sigma)+(self.xvar[i]-mu)**2/(2.*sigma**2)) for i in range(self.msize)])
+
+    def expR_grad_rho(self):
+        mu, sigma, rho, p = self.params
+        first = 3.*rho/((1.-rho)*(2.*rho+1.))
+        second = -(self.s_xk_squared*rho*(2.+rho)-self.s_xi_xj*(2.*rho**2+1))/(sigma*((1.-rho)**2)*(2.*rho+1)**2)
+        return (first+second)*self.N3r
+
+    def logR_grad_rho(self):
+        mu, sigma, rho, p = self.params
+        first = 3.*rho/((1.-rho)*(2.*rho+1.))
+        second = -(self.s_xk_squared*rho*(2.+rho)-self.s_xi_xj*(2.*rho**2+1))/(sigma*((1.-rho)**2)*(2.*rho+1)**2)
+        return (first+second)
+
+    def dfdx(self, index):
+        dfdx = [(self.expR_grad_x(index)*self.S3-self.expS_grad_x(index))*self.N3r/self.S3**2]
+        dfdx.append((self.expI_grad_x(index)*self.S3-self.expS_grad_x(index))*self.N3i/self.S3**2)
+        return dfdx
+
+    def log_dfdx(self, index):
+        dfdx = [self.logR_grad_x(index)-self.logS_grad_x(index), self.logI_grad_x(index)-self.logS_grad_x(index)]
+        return dfdx
+
+    def grad_merge_mu(self, index):
+        mu, sigma, rho, p = self.params
+        return -p*self.Nr[index]
+
+    def grad_merge_sigma(self, index):
+        mu, sigma, rho, p = self.params
+        return -p*(self.xvar[index]-mu)/(2.*sigma)*self.Nr[index]
+
+    def set_grad_component(self):
+        mu, sigma, rho, p = self.params
+        for i in range(self.msize):
+            self.dfdx_list[i] = self.dfdx(i)
+            self.dfdx_list_log[i] = self.log_dfdx(i)
+        for i in range(self.msize):
+            self.fx_dfdx_list[i] = [n/self.S[i] for n in self.dfdx_list[i]]
+            self.fx_dfdx_list_log[i] = [n/self.S[i] for n in self.dfdx_list_log[i]]
+
+        for i in range(self.msize):
+            self.grad_merge[0][i] = self.grad_merge_mu(i)
+            self.grad_merge[1][i] = self.grad_merge_sigma(i)
+
+    def set_grad(self):
+        for r in [0, 1]:
+            rep = (r == 0)
+            for p in range(0, 3):
+                if p == 0:
+                    if rep:
+                        self.grad_list_raw[r][p] = (self.expR_grad_mu()*self.S3-self.expS_grad_mu())*self.N3r/self.S3**2
+                    else:
+                        self.grad_list_raw[r][p] = (self.expI_grad_mu()*self.S3-self.expS_grad_mu())*self.N3i/self.S3**2
+                    self.grad_list[r][p] = self.grad_list_raw[r][p]-sum([self.grad_merge[p][i]*self.fx_dfdx_list[i][r] for i in range(self.msize)])
+                elif p == 1:
+                    if rep:
+                        self.grad_list_raw[r][p] = (self.expR_grad_sigma()*self.S3-self.expS_grad_sigma())*self.N3r/self.S3**2
+                    else:
+                        self.grad_list_raw[r][p] = (self.expI_grad_sigma()*self.S3-self.expS_grad_sigma())*self.N3i/self.S3**2
+                    self.grad_list[r][p] = self.grad_list_raw[r][p]-sum([self.grad_merge[p][i]*self.fx_dfdx_list[i][r] for i in range(self.msize)])
+                else:
+                    if rep:
+                        self.grad_list[r][p] = self.grad_list_raw[r][p] = self.expR_grad_rho()*self.N3r/self.S3
+                    else:
+                        self.grad_list[r][p] = self.grad_list_raw[r][p] = 0.0
+
+    def set_grad_log(self):
+        for r in [0, 1]:
+            rep = (r == 0)
+            for p in range(0, 3):
+                if p == 2:
+                    if rep:
+                        self.grad_list_log[r][p] = self.grad_list_log_raw[r][p] = self.logR_grad_rho()
+                    else:
+                        self.grad_list_log[r][p] = self.grad_list_log_raw[r][p] = 0.0
+                else:
+                    if p == 0:
+                        if rep:
+                            self.grad_list_log_raw[r][p] = self.logR_grad_mu()-self.logS_grad_mu()
+                        else:
+                            self.grad_list_log_raw[r][p] = self.logI_grad_mu()-self.logS_grad_mu()
+                    elif p == 1:
+                        if rep:
+                            self.grad_list_log_raw[r][p] = self.logR_grad_sigma()-self.logS_grad_sigma()
+                        else:
+                            self.grad_list_log_raw[r][p] = self.logI_grad_sigma()-self.logS_grad_sigma()
+                    self.grad_list_log[r][p] = self.grad_list_log_raw[r][p]-sum([self.grad_merge[p][i]*self.fx_dfdx_list_log[i][r] for i in range(self.msize)])
+
+
+
+# def calc_gaussian_mix_q_func_gradient(param, x1, x2, rep, fix_mu, fix_sigma):
+#     mu, sigma, rho, p = theta
+#     if fix_mu:
+#         mu_grad = [0.]*len(x1)
+#     else:
+#         mu_grad = [emission_grad_mu(i, j, params, rep) for i, j in zip(x1, x2)]
+#     if fix_sigma:
+#         sigma_grad = [0.]*len(x1)
+#     else:
+#         sigma_grad = [emission_grad_sigma(i, j, params, rep) for i, j in zip(x1, x2)]
+#     rho_grad = [emission_grad_rho(i, j, params, rep) for i, j in zip(x1, x2)]
+#     # p_grad = [emission_grad_p(i, j, params, rep) for i, j in zip(x1, x2)]
+#     return np.vstack((mu_grad, sigma_grad, rho_grad))
 
 # def clip_model_params(init_theta):
 #     theta_changed = False
 
-def calc_gaussian_mix_log_lhd_gradient(theta, z1, z2, fix_mu, fix_sigma):
-    mu, sigma, rho, p = theta
+# def calc_gaussian_mix_log_lhd_gradient(theta, z1, z2, fix_mu, fix_sigma):
+#     mu, sigma, rho, p = theta
+#
+#     noise_log_lhd = calc_gaussian_lhd(z1, z2, (0., 1., 0., 0.))
+#     signal_log_lhd = calc_gaussian_lhd(z1, z2, (mu, sigma, rho, 0.))
+#
+#     # calculate the likelihood ratio for each statistic
+#     ez = p*np.exp(signal_log_lhd)/(
+#         p*np.exp(signal_log_lhd)+(1-p)*np.exp(noise_log_lhd))
+#     ez_sum = ez.sum()
+#
+#     # startndardize the values
+#     std_z1 = (z1-mu)/sigma
+#     std_z2 = (z2-mu)/sigma
+#
+#     # calculate the weighted statistics - we use these for the
+#     # gradient calculations
+#     weighted_sum_sqs_1 = (ez*(std_z1**2)).sum()
+#     weighted_sum_sqs_2 = (ez*((std_z2)**2)).sum()
+#     weighted_sum_prod = (ez*std_z2*std_z1).sum()
+#
+#     if fix_mu:
+#         mu_grad = 0
+#     else:
+#         mu_grad = (ez*((std_z1+std_z2)/(1-rho*rho))).sum()
+#
+#     if fix_sigma:
+#         sigma_grad = 0
+#     else:
+#         sigma_grad = (
+#             weighted_sum_sqs_1
+#             + weighted_sum_sqs_2
+#             - 2*rho*weighted_sum_prod )
+#         sigma_grad /= (1-rho*rho)
+#         sigma_grad -= 2*ez_sum
+#         sigma_grad /= sigma
+#
+#     rho_grad = -rho*(rho*rho-1)*ez_sum + (rho*rho+1)*weighted_sum_prod - rho*(
+#         weighted_sum_sqs_1 + weighted_sum_sqs_2)
+#     rho_grad /= (1-rho*rho)*(1-rho*rho)
+#
+#     p_grad = np.exp(signal_log_lhd) - np.exp(noise_log_lhd)
+#     p_grad /= p*np.exp(signal_log_lhd)+(1-p)*np.exp(noise_log_lhd)
+#     p_grad = p_grad.sum()
+#
+#     return np.array((mu_grad, sigma_grad, rho_grad, p_grad))
 
-    noise_log_lhd = calc_gaussian_lhd(z1, z2, (0., 1., 0., 0.))
-    signal_log_lhd = calc_gaussian_lhd(z1, z2, (mu, sigma, rho, 0.))
-
-    # calculate the likelihood ratio for each statistic
-    ez = p*np.exp(signal_log_lhd)/(
-        p*np.exp(signal_log_lhd)+(1-p)*np.exp(noise_log_lhd))
-    ez_sum = ez.sum()
-
-    # startndardize the values
-    std_z1 = (z1-mu)/sigma
-    std_z2 = (z2-mu)/sigma
-
-    # calculate the weighted statistics - we use these for the
-    # gradient calculations
-    weighted_sum_sqs_1 = (ez*(std_z1**2)).sum()
-    weighted_sum_sqs_2 = (ez*((std_z2)**2)).sum()
-    weighted_sum_prod = (ez*std_z2*std_z1).sum()
-
-    if fix_mu:
-        mu_grad = 0
+def QfuncGrad23dim(params, xvar):
+    if len(xvar) == 2:
+        return QfuncGrad(params, xvar)
     else:
-        mu_grad = (ez*((std_z1+std_z2)/(1-rho*rho))).sum()
+        return QfuncGrad3dim(params, xvar)
 
-    if fix_sigma:
-        sigma_grad = 0
-    else:
-        sigma_grad = (
-            weighted_sum_sqs_1
-            + weighted_sum_sqs_2
-            - 2*rho*weighted_sum_prod )
-        sigma_grad /= (1-rho*rho)
-        sigma_grad -= 2*ez_sum
-        sigma_grad /= sigma
-
-    rho_grad = -rho*(rho*rho-1)*ez_sum + (rho*rho+1)*weighted_sum_prod - rho*(
-        weighted_sum_sqs_1 + weighted_sum_sqs_2)
-    rho_grad /= (1-rho*rho)*(1-rho*rho)
-
-    p_grad = np.exp(signal_log_lhd) - np.exp(noise_log_lhd)
-    p_grad /= p*np.exp(signal_log_lhd)+(1-p)*np.exp(noise_log_lhd)
-    p_grad = p_grad.sum()
-
-    return np.array((mu_grad, sigma_grad, rho_grad, p_grad))
 
 def clip_model_params(init_theta):
     theta_changed = False
@@ -604,9 +867,15 @@ def clip_model_params(init_theta):
     if theta[0] < MIN_MU:
         theta[0] = MIN_MU
         theta_changed = True
+    elif theta[0] > MAX_MU:
+        theta[0] = MAX_MU
+        theta_changed = True
 
     if theta[1] < MIN_SIGMA:
         theta[1] = MIN_SIGMA
+        theta_changed = True
+    elif theta[1] > MAX_SIGMA:
+        theta[1] = MAX_SIGMA
         theta_changed = True
 
     if theta[2] < MIN_RHO:
@@ -624,4 +893,3 @@ def clip_model_params(init_theta):
         theta_changed = True
 
     return theta, theta_changed
-

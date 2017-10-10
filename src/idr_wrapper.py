@@ -21,11 +21,16 @@ def plot_lhd_value(lhd, header):
     plt.clf()
     utility.log("# "+ofile+" min="+str(min(lhd))+" max="+str(max(lhd)))
 
+def rank_vector(rep):
+    return np.lexsort((np.random.random(len(rep)), rep)).argsort()
 
 def only_build_rank_vectors(s1, s2):
-    rank1 = np.lexsort((np.random.random(len(s1)), s1)).argsort()
-    rank2 = np.lexsort((np.random.random(len(s2)), s2)).argsort()
+    rank1 = rank_vector(s1)
+    rank2 = rank_vector(s2)
     return (np.array(rank1, dtype=np.int), np.array(rank2, dtype=np.int))
+
+def only_build_rank_vector(reps):
+    return tuple([np.array(rank_vector(rep), dtype=np.int) for rep in reps])
 
 def only_EMP_with_pseudo_value_algorithm(
         r1, r2, theta_0,
@@ -133,8 +138,6 @@ def get_concatenated_scores(seta, dict1, dict2):
     s2 = get_concatenated_score(seta, dict2)
     return s1, s2
 
-def common_transcript(dict1, dict2):
-    return set(dict1.keys()) & set(dict2.keys())
 
 def get_rank_dictionary(data):
     ulist = sorted(list(set(data)))

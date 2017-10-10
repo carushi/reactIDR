@@ -1,447 +1,201 @@
 # from __init__ import *
 import sys
-import scipy.linalg
+import time
+import resource
+from forward_backward import *
+from scipy.optimize import fminbound, minimize, fmin_l_bfgs_b
 from scipy.stats import rankdata
-from scipy.optimize import fminbound, minimize
-import numpy as np
-import copy
-import math
-from enum import Enum
-from prob_optimize import *
+import scipy.linalg
 from utility import *
-from idr_wrapper import common_transcript, only_build_rank_vectors, get_concatenated_scores, get_idr_value
-# import idr.idr
-# import pdb; pdb.set_trace()
+from idr_wrapper_hmm import only_build_rank_vector_23dim, get_concatenated_scores, get_idr_value_23dim, estimate_copula_params
 
-# import random
-# import subprocess
-# import os
-# import math
-# from statsmodels.tsa.stattools import acf
-# import pvalue
-# import pylab
-# from idr_wrapper import *
-# from plot_image import *
+
+APPROX_GRAD = False
+RRNA_MODE = False
 
 def print_mat_one_line(mat, end=''):
     print([[mat[i,j] for j in range(mat.shape[1])] for i in range(mat.shape[0])], end=end)
 
-def dot_blacket_to_float(c):
+def write_mat_one_line(mat, end=''):
+    return str([[mat[i,j] for j in range(mat.shape[1])] for i in range(mat.shape[0])])
+
+def dot_blacket_to_float(c): # structure 0 acc - 1 canonical, -1 unmappable, -2 any.
     if c == ".":    return 0.0
     elif c == "(" or c == ")":  return 1.0
+    elif c == "*":  return -2.0
+    elif c == "-":   return -1.0
     else:   return 0.5
 
-def get_struct_dict(file):
+
+def seq_to_float(c):
+    if c == 'A' or c == 'a':
+        return 0
+    elif c == 'C' or c == 'c':
+        return 1
+    elif c == 'G' or c == 'g':
+        return 2
+    elif c in {'T', 't', 'U', 'u'}:
+        return 3
+    else:
+        return 4
+
+def get_struct_dict(file, func):
     struct_dict = {}
     with open(file) as f:
         name = "", ""
         for line in f.readlines():
+            if line == "" or line[0] == "#":
+                continue
             if line[0] == '>':
                 name = line[1:].rstrip('\n')
+                struct_dict[name] = []
             else:
-                struct_dict[name] = [dot_blacket_to_float(c) for c in line.rstrip('\n')]
+                struct_dict[name] += [func(c) for c in line.rstrip('\n')]
     return struct_dict
 
-class Parameter:
-    def __init__(self, arg):
-        self.mu = arg.mu
-        self.sigma = arg.sigma
-        self.rho = arg.rho
-        self.pi = arg.pi
+def convert_to_hidden_dict(dict, func):
+    for key in dict:
+        dict[key] = list(map(func, dict[key]))
+    return dict
 
-class ForwardBackward:
-    """docstring for ForwardBackward"""
-    def __init__(self, length, dim):
-        self.INF = float('infinity')
-        self.forward = np.matrix([[-self.INF]*dim]*(length+1), dtype=float)
-        self.backward = np.matrix([[-self.INF]*dim]*(length+1), dtype=float)
-        self.responsibility = np.matrix([[-self.INF]*(dim**2)]*(length+1), dtype=float)
-        self.emission = np.matrix([[-self.INF]*dim]*(length+1), dtype=float)
+def filter_no_annotated_data(seta, hidden):
+    seta = [key for key in seta if key == chr(0) or key in hidden]
+    for key in list(hidden.keys()):
+        if key not in seta:
+            hidden.pop(key)
+    return seta, hidden
 
-    def fill_inf(self):
-        self.forward.fill(-self.INF)
-        self.backward.fill(-self.INF)
+def bound_variables():
+    min_vals = [MIN_MU, MIN_SIGMA, MIN_RHO] #MIN_MIX_PARAM
+    max_vals = [MAX_MU, MAX_SIGMA, MAX_RHO] #MAX_MIX_PARAM
+    max_change = [MAX_MU, MAX_SIGMA, MAX_RHO]
+    return min_vals, max_vals, max_change
 
-    def pf(self):
-        return self.forward[self.forward.shape[0]-1,0]
-
-class Hidden(Enum):
-    unmappable = 0
-    acc = 1
-    stem = 2
-
-class Sample(Enum):
-    case = 0
-    cont = 1
-
-def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, debug = True):
-    if len(data) == 1:
-        rankdata = [[]]
-        seta = data[0][0].keys()
+def lbfgs_qfunc(alpha, *args):
+    global APPROX_GRAD
+    index, sindex, theta, hmm = args[0], args[1], args[2], args[3]
+    theta[index] = float(alpha)
+    if APPROX_GRAD:
+        # value = -hmm.q_function(sindex, theta)
+        update_amount = -hmm.q_function_grad_single_variable(sindex, index)
+        return update_amount
     else:
-        rankdata = [[], []]
-        seta = common_transcript(data[0][0], data[1][0])
-    if sample_size > 0:
-        seta = random.sample(seta, min(len(seta), sample_size))
-    if debug: # debug mode
-        seta = set([chr(0), "RNA18S5+", "RNA28S5+", "RNA18S5-", "RNA28S5-"])
-    seta = sorted(list(seta))
-    for i in range(len(data)):
-        for x in seta:
-            rep1, rep2 = data[i][0][x], data[i][1][x]
-            if max_len > 0:
-                rep1, rep2 = rep1[0:max_len], rep2[0:max_len]
+        value = -hmm.q_function(sindex, theta)
+        update_amount = -hmm.q_function_grad_single_variable(sindex, index)
+        return value, np.array([update_amount])
+    # value = -hmm.q_function(sindex, theta)
+    # update_amount = -hmm.q_function_grad()[sindex][index]
+    # return value, update_amount # value and gradient
+
+def clip_params(pindex, pthres, mthres):
+    if pindex == 2 or pindex == 3:
+        mthres = max(0.0, mthres)
+        pthres = min(1.0, pthres)
+    if pindex == 1:
+        mthres = max(EPS, mthres)
+    return pthres, mthres
+
+def list_length(L):
+    if isinstance(L, (list, np.ndarray)):
+        if len(L) > 0 and isinstance(L[0], (list, np.ndarray)):
+            return [list_length(x) for x in L]
+        else:
+            return len(L)
+    return 0
+
+def get_target_transcript(data, sample_size, debug):
+    global RRNA_MODE
+    if RRNA_MODE: # Debug mode
+        # seta = set([chr(0), "RNA18S5+", "RNA28S5+", "RNA5-8S5+", "ENSG00000201321|ENST00000364451+"])
+        seta = set(["RNA18S5+", "RNA28S5+", "RNA5-8S5+", "ENSG00000201321|ENST00000364451+", \
+                            "RNA18S5-", "RNA28S5-", "RNA5-8S5-", "ENSG00000201321|ENST00000364451-"])
+
+        seta = [x for x in seta if x in data[0][0].keys()]
+    else:
+        if len(data) == 1:
+            seta = data[0][0].keys()
+        else:
+            seta = common_transcript(data[0][0], data[1][0], data[2][0] if len(data) == 3 else None)
+        if sample_size > 0:
+            seta = random.sample(seta, min(len(seta), sample_size))
+    return set([chr(0)]+list(seta))
+
+def truncate_transcript(rep, max_len, skip_start, skip_end):
+    if max_len > 0:
+        return rep[0:max_len]
+    else:
+        if max(skip_start, 0)+max(skip_end, 0) > len(rep):
+            if len(rep) <= 1: # chr(0) hidden ([]), data ([0])
+                return []
             else:
-                if skip_start > 0:  rep1, rep2 = rep1[skip_start:], rep2[skip_start:]
-                if skip_end > 0:    rep1, rep2 = rep1[0:len(rep1)-skip_end], rep2[0:len(rep2)-skip_end]
-            data[i][0][x], data[i][1][x] = rep1, rep2
+                return [0]
+        else:
+            return rep[max(skip_start, 0):len(rep)-max(skip_end, 0)]
+
+def truncate_and_concatenate_score(seta, single_set, max_len, skip_start, skip_end):
+    return np.asarray([ item for sublist in [single_set[i] for i in seta if i in single_set] \
+                             for item in truncate_transcript(sublist, max_len, skip_start, skip_end)])
+
+
+def get_target_rankdata(data, seta, max_len, skip_start, skip_end):
+    rankdata = [ [] for i in range(len(data))]
     for i, x in enumerate(data):
-        s1, s2 = get_concatenated_scores(seta, x[0], x[1])
-        rankdata[i] = only_build_rank_vectors(s1, s2)
-    temp = [len(data[0][0][x]) for x in seta]
-    print("length:", temp)
-    stop_sites = [sum(temp[0:(i+1)])-1 for i in range(len(temp))]
-    print("unmappable:", stop_sites)
-    return rankdata, stop_sites, seta
+        print("rankdata")
+        reps = [ truncate_and_concatenate_score(seta, x[j], max_len, skip_start, skip_end) for j in range(len(data[i]))]
+        for j in range(len(data[i])):
+            reps[j] = np.asarray([min(reps[j]-1)]+reps[j]) # Add minimum value at the first corresponding to chr(0)
+        rankdata[i] = only_build_rank_vector_23dim(reps)
 
-class HMM:
-    """docstring for ClassName"""
-    def __init__(self, hclass, v, stop_sites):
-        self.hclass = hclass
-        self.v = v
-        self.stop_sites = stop_sites
-        self.fb = None
-        self.pseudo_value = None
-        self.transition_param = None
-        self.params = []
-        self.verbose = False
-        self.resp_file = 'responsibility.txt'
-        self.f_file = 'forward.txt'
-        self.b_file = 'backward.txt'
+    return rankdata
 
-    def set_IDR_params(self, index, params):
-        if self.verbose:    print("HMM: change params.")
-        if index < 0:
-            self.params = params.copy()
-        else:
-            self.params[index] = params.copy()
+def get_stop_sites(single_set, seta, max_len, skip_start, skip_end, verbose):
+    temp = [len(truncate_transcript(single_set[x], max_len, skip_start, skip_end)) if x != chr(0) else 0 for x in seta]
+    stop_sites = [sum(temp[0:(i+1)]) for i in range(len(temp))]
+    if verbose:
+        print("\tLength of each transcript:", temp)
+        print("\tUnmappable sites:", stop_sites)
+    return stop_sites
 
-    def get_IDR_params(self, index = -1):
-        if index < 0:
-            return self.params
-        return self.params[index]
+def set_to_same_length(seta, data, hidden):
+    for key in seta:
+        if key == chr(0):   continue
+        length = max(len(hidden[key]), max([len(rep[key]) for tdata in data for rep in tdata]))
+        if len(hidden[key]) < length:
+            print("Warning! Reference is shorter than dataset", key, "sequence", len(hidden[key]), "<", length)
+            hidden[key] += [-1]*(length-len(hidden[key]))
+        for i in range(len(data)):
+            for j in range(len(data[i])):
+                if len(data[i][j][key]) < length:
+                    print("Warning! Some of dataset is shorter", key, i, j, len(data[i][j][key]), "<", length)
+                    data[i][j][key] += [0.]*(length-len(data[i][j][key]))
+    return data, hidden
 
-    def set_transition_param_log(self, raw_transition_param):
-        if self.verbose:    print("HMM: change transition params.")
-        self.transition_param = raw_transition_param.copy()
-        for i in range(self.transition_param.shape[0]):
-            for j in range(self.transition_param.shape[1]):
-                if self.transition_param[i, j] == 0.0:
-                    self.transition_param[i, j] = -float('infinity')
-                else:
-                    self.transition_param[i, j] = min(0.0, math.log(self.transition_param[i, j]))
-
-    def set_pseudo_value(self, index = -1):
-        if self.verbose:    print("HMM: set pseudo_value (%i)." % index)
-        if index < 0:
-            self.pseudo_value = [[] for i in range(len(self.v))]
-        else:
-            self.pseudo_value[index] = []
-        for i in range(len(self.v)):
-            if index < 0 or index == i:
-                param = self.get_IDR_params(i)
-                self.pseudo_value[i] = [hmm_compute_pseudo_values(self.v[i][0], param[0], param[1], param[3]),
-                                        hmm_compute_pseudo_values(self.v[i][1], param[0], param[1], param[3])]
-                if self.verbose:
-                    for j in range(len(self.pseudo_value[i])):
-                        print("HMM: set pseudo value: ", i, j, "->", self.pseudo_value[i][j][0:10], "...")
-                    for j in range(len(self.v[i])):
-                        print("HMM: (original value) ", i, j, "->", self.v[i][j][0:10], "...")
-
-    def responsibility_state(self, index, h, debug = False):
-        return sum([self.fb.responsibility[index, h*self.hclass+k] for k in range(self.hclass)])
-
-    def responsibility_transition(self, index, h, k):
-        return self.fb.responsibility[index, h*self.hclass+k]
-
-    def set_responsibility(self):
-        if self.verbose:    print("HMM: set responsibility")
-        for i in range(self.length-1):
-            for h in range(self.hclass):
-                for k in range(self.hclass):
-                    prob = self.fb.forward[i, h]+self.transition_param[h, k]+self.fb.backward[i+1, k]-self.fb.pf()
-                    if abs(prob) == float('infinity'):
-                        self.fb.responsibility[i, h*self.hclass+k] = 0.0
-                    else:
-                        self.fb.responsibility[i, h*self.hclass+k] = exp(prob)
-        if self.verbose:
-            print("HMM: write responsibility to file...")
-            np.savetxt(self.resp_file, self.fb.responsibility)
-
-    def emission_prob_log_value(self, rep, x1, x2, param):
-        deno = logS(x1, x2, param)
-        if rep:
-            return fastpo.c_calc_gaussian_lhd(x1, x2, param)-deno
-        else:
-            return fastpo.c_calc_gaussian_lhd(x1, x2, [0., 1., 0., 0.])-deno
-
-    def emission_prob_log(self, index, h, params):
-        def rep(i, h):
-            return ((i == Sample.case.value and h == Hidden.acc.value) or (i == Sample.cont.value and h == Hidden.stem.value))
-        assert index > 0
-        return sum([self.emission_prob_log_value(rep(i, h), self.pseudo_value[i][0][index], self.pseudo_value[i][1][index], params[i]) for i in range(len(self.pseudo_value)) ])
-
-    def set_emission(self):
-        if self.verbose:    print("HMM: set emission")
-        for i in range(1, self.length-1):
-            for h in range(self.hclass):
-                self.fb.emission[i, h] = self.emission_prob_log(i, h, self.params)
-
-    def debug_print_q_function(self, sindex, params):
-        first = 0.0
-        for h in range(self.hclass):
-            for i in range(1, self.length-1):
-                value = self.responsibility_state(i, h)*self.emission_prob_log(i, h, params)
-                print(value, end=" ")
-        print('')
-        second = sum([self.responsibility_state(i, h)*self.emission_prob_log(i, h, params) for i in range(1, self.length-1) for h in range(self.hclass) if self.responsibility_state(i, h) > 0.0])
-        third = sum([self.responsibility_transition(i, h, k)*self.transition_param[h, k] for k in range(self.hclass) for h in range(self.hclass) for i in range(0, self.length-1) if self.responsibility_transition(i, h, k) > 0.0])
-        q = sum((first, second, third))
-        print('q ', q)
-        sys.exit(1)
-
-    def q_function(self, sindex = -1, param = None):
-        if sindex >= 0:
-            self.set_IDR_params(sindex, param)
-            self.set_pseudo_value(sindex)
-        params = self.get_IDR_params()
-        first = 0.
-        if sindex >= 0:
-            second = sum([sum([ self.responsibility_state(i, h, True)*self.emission_prob_log(i, h, self.params) for i in range(1, self.length-1) if self.responsibility_state(i, h, True) > 0]) for h in range(self.hclass)])
-        else:
-            second = sum([sum([ self.responsibility_state(i, h, True)*self.fb.emission[i, h] for i in range(1, self.length-1) if self.responsibility_state(i, h, True) > 0]) for h in range(self.hclass)])
-        third = 0.
-        for i in range(0, self.length-1):
-            for h in range(self.hclass):
-                third += sum([ self.responsibility_transition(i, h, k)*self.transition_param[h, k] for k in range(self.hclass) if self.responsibility_transition(i, h, k) > 0.0])
-        q = first+second+third
-        if self.verbose:
-            print('q_function', first+second+third, "=", first, second, third)
-        return first+second+third
-
-    def q_function_const(self, sindex = -1, param = None):
-        if sindex >= 0:
-            original_params = self.get_IDR_params().copy()
-            self.set_IDR_params(sindex, param)
-            self.set_pseudo_value(sindex)
-        params = self.get_IDR_params().copy()
-        if self.verbose:
-            print("HMM: calc q_function (%s)." % ['new aparam', 'new sparam', 'no renewal'][sindex], end="")
-            print(params)
-        q = self.q_function()
-        if sindex >= 0:
-            self.set_IDR_params(sindex, original_params[sindex])
-            self.set_pseudo_value(sindex)
-        return q
-
-    def calc_q_function_grad_at_once(self, s, rep_class):
-        grad = [0.]*3
-        for i, (x, y) in enumerate(zip(self.pseudo_value[s][0], self.pseudo_value[s][1])):
-            if i == 0:  continue
-            q = QfuncGrad(x, y, self.get_IDR_params(s))
-            for h in range(self.hclass):
-                if self.responsibility_state(i, h, True) == 0.0:  continue
-                r = 0 if h == rep_class else 1
-                for p in range(3):
-                    grad[p] += self.responsibility_state(i, h)*q.grad_list_log[r][p]
-        return grad
-
-    def q_function_grad(self, grad_max = 3):
-        grad = []
-        for s in range(len(self.v)):
-            if s == 0:
-                rep_class = 1 # acc == reproducible
-            elif s == 1:
-                rep_class = 2 # stem == reproducible
-            grad.append(self.calc_q_function_grad_at_once(s, rep_class))
-        return grad
-
-    def q_function_discrete(self, sindex, pindex, pthres, mthres):
-        if pindex == 2 or pindex == 3:
-            mthres = max(0.0, mthres)
-            pthres = min(1.0, pthres)
-        if pindex == 1:
-            mthres = max(EPS, mthres)
-        params = self.get_IDR_params(sindex).copy()
-        params[pindex] = pthres
-        qp = self.q_function_const(sindex, params)
-        plus = params[pindex]
-        params[pindex] = mthres
-        qm = self.q_function_const(sindex, params)
-        minus = params[pindex]
-        if self.verbose:
-            print('disc=', (qp-qm)/(plus-minus), '(', qp, '-', qm, ')/', plus-minus, plus, pthres, minus, mthres)
-        return qp, qm, plus-minus
-
-    def q_function_grad_num(self, grad_max = 3):
-        grad = []
-        alpha = 0.001
-        for s in range(len(self.v)):
-            rep_class = 1 if s == 0 else 2 # acc == reproducible or stem == reproducible
-            grad.append([])
-            for i, p in enumerate(self.get_IDR_params(s)):
-                if i == grad_max:  break
-                pthres, mthres = p+alpha, p-alpha
-                qp, qm, diff = self.q_function_discrete(s, i, pthres, mthres)
-                grad[s].append((qp-qm)/diff)
-                if self.verbose:
-                    print('HMM:', i, "gradient", qp-qm, qp, qm)
-        return grad
-
-    def q_function_emi_grad_num(self, x1, x2, params, rep, grad_max = 3, log = True):
-        grad = []
-        alpha = 0.001
-        if len(params) != 4:
-            params = params[0]
-        for i, p in enumerate(params):
-            if i == grad_max:  break
-            pthres, mthres = p+alpha, p-alpha
-            if i == 2 or i == 3:
-                mthres = max(0.0, mthres)
-                pthres = min(1.0, pthres)
-            if i == 1:
-                mthres = max(EPS, mthres)
-            tparams = params.copy()
-            tparams[i] = pthres
-            qp = self.emission_prob_log_value(rep, x1, x2, tparams)
-            plus = tparams[i]
-            tparams[i] = mthres
-            qm = self.emission_prob_log_value(rep, x1, x2, tparams)
-            minus = tparams[i]
-            if not log:
-                qp, qm = exp(qp), exp(qm)
-            grad.append((qp-qm)/(plus-minus))
-            if self.verbose:
-                print('HMM:', i, "emi_gradient", (qp-qm)/(plus-minus), qp, qm, plus, minus)
-        return grad
-
-    def q_function_comp_grad_num(self, x1, x2, params, rep, grad_max = 3, log = True):
-        grad = []
-        alpha = 0.001
-        if len(params) != 4:
-            params = params[0]
-        for i, p in enumerate(params):
-            if i == grad_max:  break
-            pthres, mthres = p+alpha, p-alpha
-            if i == 2 or i == 3:
-                mthres = max(0.0, mthres)
-                pthres = min(1.0, pthres)
-            if i == 1:
-                mthres = max(EPS, mthres)
-            tparams = params.copy()
-            tparams[i] = pthres
-            if rep:
-                qp = logR(x1, x2, tparams)-logS(x1, x2, tparams)
-            else:
-                qp = logI(x1, x2, tparams)-logS(x1, x2, tparams)
-            plus = tparams[i]
-            tparams[i] = mthres
-            if rep:
-                qm = logR(x1, x2, tparams)-logS(x1, x2, tparams)
-            else:
-                qm = logI(x1, x2, tparams)-logS(x1, x2, tparams)
-            minus = tparams[i]
-            if not log:
-                qp, qm = exp(qp), exp(qm)
-            grad.append((qp-qm)/(plus-minus))
-            if self.verbose:
-                print('HMM:', i, "comp_gradient", (qp-qm)/(plus-minus), qp, qm, plus, minus)
-        return grad
-
-
-    def fill_fb(self):
-        self.set_emission()
-        self.fb.forward[0, 0] = 0.
-        self.fb.backward[self.length-1,0] = 0.
-        if self.verbose:
-            print('HMM: start forward and backward')
-        for i in range(1, self.length-1):
-            if i in self.stop_sites:
-                self.fb.forward[i, 0] = logsumexp_inf([self.fb.forward[i-1, k]
-                                        +self.transition_param[k, 0]
-                                        +self.fb.emission[i, 0] for k in range(self.hclass)])
-            else:
-                self.fb.forward[i, :] = [logsumexp_inf([self.fb.forward[i-1, k]
-                                                  +self.transition_param[k, h]
-                                                  +self.fb.emission[i, h] for k in range(self.hclass)])
-                                                                               for h in range(self.hclass)]
-        self.fb.forward[self.length-1, 0] = logsumexp_inf([self.fb.forward[self.length-2, k]+self.transition_param[k, 0] for k in range(self.hclass)])
-        for i in range(self.length-2, 0, -1): # transition_param is used as transposed.
-            if i in self.stop_sites:
-                self.fb.backward[i, 0] = logsumexp_inf([self.fb.backward[i+1, k]
-                                             +self.transition_param[0, k]
-                                             +self.fb.emission[i, 0] for k in range(self.hclass)])
-            else:
-                self.fb.backward[i, :] = [logsumexp_inf([self.fb.backward[i+1, k]
-                                                   +self.transition_param[h, k]
-                                                   +self.fb.emission[i, h] for k in range(self.hclass)])
-                                                                                              for h in range(self.hclass)]
-                # print([[(h, k, self.fb.backward[i+1, k], self.transition_param[h, k], self.emission_prob_log(i, h, self.params)) for k in range(self.hclass)] for h in range(self.hclass)])
-        self.fb.backward[0, 0] = logsumexp_inf([self.fb.backward[1, k]+self.transition_param[0, k] for k in range(self.hclass)])
-        if self.verbose:
-            print('HMM: done forward and backward -> ', (self.fb.pf(), self.fb.backward[0, 0]))
-            self.print_result()
-        assert abs(self.fb.pf()-self.fb.backward[0, 0]) < EPS
-        self.set_responsibility()
-
-        """
-        state and output location
-                0           1          ...     length-2     length-1
-        state   unmappable  any        ...     unmappable   unmappable
-        output  u1          u2         ...     uN        none
-        stop_sites = [0, n1, n2, ..., length-2] (end of each transcript should be unmappable)
-
-        """
-
-    def check_prob(self):
-        for i in range(1, self.length-1):
-            temp = [self.responsibility_state(i, h) for h in range(self.hclass)]
-            assert abs(sum(temp)-1.0) < EPS
-        for i in range(1, self.length-1):
-            temp = [[self.responsibility_transition(i, h, k) for k in range(self.hclass)] for h in range(self.hclass)]
-            # print(sum([sum(x) for x in temp]))
-            assert abs(sum([sum(x) for x in temp])-1.0) < EPS
-
-    def debug_print(self):
-        self.check_prob()
-        # print(self.rankdata)
-        # print(self.fb)
-
-    def print_result(self):
-        print('HMM: write fb to file ...')
-        np.set_printoptions(threshold=np.nan)
-        np.savetxt(self.f_file, self.fb.forward)
-        np.savetxt(self.b_file, self.fb.backward)
-
-    def forward_backward(self, transition_param, params):
-        if self.verbose:    print("HMM: forward backward.")
-        self.set_IDR_params(-1, params)
-        self.set_transition_param_log(transition_param)
-        self.set_pseudo_value()
-        if self.fb == None or self.fb.forward.shape[0] != len(self.pseudo_value[0][0]):
-            self.fb = ForwardBackward(len(self.pseudo_value[0][0]), self.hclass)
-            self.length = self.fb.forward.shape[0]
-        else:
-            self.fb.store_old()
-            self.fb.fill_inf()
-        self.fill_fb()
-        self.debug_print()
-        return self.q_function()
+def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden=None, debug = True, verbose=True):
+    if verbose:
+        print("Dataset--------")
+    seta = get_target_transcript(data, sample_size, debug)
+    seta = sorted(list(seta))
+    hidden_mat = None
+    if hidden is not None:
+        seta, hidden = filter_no_annotated_data(seta, hidden)
+        data, hidden = set_to_same_length(seta, data, hidden)
+        hidden_mat = truncate_and_concatenate_score(seta, hidden, max_len, skip_start, skip_end)
+        hidden_mat = np.append([0], hidden_mat) # Add unmappable at the first corresponding to chr(0)
+        if verbose:
+            print("\tHidden class: ", seta)
+            print("\tHidden length: ", hidden_mat.shape)
+    rankdata = get_target_rankdata(data, seta, max_len, skip_start, skip_end)
+    stop_sites = get_stop_sites(data[0][0], seta, max_len, skip_start, skip_end, verbose)
+    if hidden_mat is not None:
+        for i in stop_sites:    hidden_mat[i] = 0
+    length_list = [len(data[0][0][key]) for key in seta[1:]]
+    return rankdata, stop_sites, seta, hidden_mat, length_list
 
 
 class ParamFitHMM:
     """docstring for ParamFitHMM"""
-    def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '', start = -1, end = 35, max_len = -1):
+    def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
+                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False):
         self.hclass = hclass
         # self.fb = None
         assert hclass == 2 or hclass == 3
@@ -457,17 +211,44 @@ class ParamFitHMM:
             self.transition_param = self.init_transition_param.copy()
         if type(param) == type(None):
             param = (1, 0.2, 0.8, 0.2) # mu, sigma, rho, pi
-        self.params = []
-        for i in range(hclass-1):
-            self.params.append(param.copy())
-        self.skip_start, self.skip_end, self.max_len = -1, 35, -1 # Truncate from start and end for each transcript.
-        self.v, self.stop_sites, self.keys = set_hmm_transcripts(data, sample, self.max_len, self.skip_start, self.skip_end, debug)
-        self.length = len(self.v[0][0])
-        self.HMM = HMM(hclass, self.v, self.stop_sites)
-        self.max_len_trans = 10000
+        assert(len(param) > 0)
+        if len(param) == 4 or isinstance(param[0], float):
+            self.params = []
+            for i in range(hclass-1):
+                self.params.append(param.copy())
+        else:
+            self.params = param
+        # self.skip_start, self.skip_end, self.max_len = -1, 35, -1 # Truncate from start and end for each transcript.
+        self.skip_start, self.skip_end, self.max_len = start, end, max_len
+        self.train = train
+        self.ref = ref
+        self.max_len_trans = 1000000
         self.verbose = True
         self.idr_output = idr_output
-        self.ref = ref
+        self.DMS_file = DMS_file
+        self.cond_name = ['case', 'cont']
+        if reverse:
+            self.cond_name = self.cond_name[::-1]
+        self.independent = independent
+        self.set_dataset_and_hidden_class(data, sample, debug, core, reverse)
+        self.default_param_file = "final_param.txt"
+        self.time = None
+        self.core = core # multi core processes
+
+    def set_dataset_and_hidden_class(self, data, sample, debug, core, reverse):
+        hidden = None
+        if self.train:
+            hidden = self.allocate_struct_based_hclass(self.ref, reverse)
+        if len(self.DMS_file) > 0:
+            assert not reverse
+            hidden = self.allocate_seq_based_hclass(self.DMS_file, hidden)
+        if hidden is not None:
+            hidden[chr(0)] = []
+        self.v, self.stop_sites, self.keys, hidden, self.length_list = set_hmm_transcripts(data, sample, self.max_len, self.skip_start, self.skip_end, hidden, debug)
+        print(self.keys)
+        self.length = len(self.v[0][0])
+        self.HMM = HMM(self.hclass, self.v, self.stop_sites, hidden, core, self.independent)
+        self.init_result_file(data)
 
     def set_IDR_params(self, index, theta):
         self.params[index] = theta.copy()
@@ -482,22 +263,36 @@ class ParamFitHMM:
 
     def get_pseudo_value(self, index):
         assert index+1 < self.hclass
-        return self.HMM.pseudo_value[index][0], self.HMM.pseudo_value[index][1]
+        return self.HMM.pseudo_value[index]
 
     def normalized_prob(self, vec):
         vec = np.asarray(vec).reshape(-1)
-        count = [np.real(i) if i > 0.0 else EPS for i in vec]
+        if len([x for x in vec if x < 0.]) == len(vec):
+            vec = -vec
+        count = [np.real(i) if i > EPS else EPS for i in vec]
         return [c/float(sum(count)) for c in count]
 
-    def set_new_transition(self):
+    def set_new_transition(self, head = ''):
         for h in range(self.hclass):
-            count = [sum([self.HMM.responsibility_transition(i, h, k) for i in range(0, self.length-1)]) for k in range(self.hclass)]
+            count = [sum([self.HMM.responsibility_transition(i, h, k) for i in range(self.length)]) for k in range(self.hclass)]
             self.transition_param[h,:] = self.normalized_prob(count)
         if self.verbose:
-            print('set new_transition -> ', end='')
+            print('Set new_transition ->', end='\t')
+            print(head, end='\t')
             print_mat_one_line(self.transition_param, '\n')
 
-    def set_new_p(self):
+    def set_new_p_eigen(self, value, vector):
+        index = [i for i in range(len(value)) if abs(value[i]-1.0) < EPS]
+        if len(index) == 0:
+            print(self.transition_param)
+            sys.exit('Transition probability matrix error!')
+        print(value)
+        print(vector)
+        vector = self.normalized_prob(i, 3, vector[:,index[0]])
+        for i in range(len(self.params)):
+            self.set_IDR_param(i, 3, vector[i+1])
+
+    def set_new_p(self, first=False):
         value, vector = scipy.linalg.eig(self.transition_param)
         vector = np.matrix(vector)
         N = self.length-1
@@ -505,25 +300,22 @@ class ParamFitHMM:
             np.set_printoptions(linewidth=200)
             print('computed eigenvector', value, end="")
             print_mat_one_line(vector, '\n')
-        index = [i for i in range(len(value)) if abs(value[i]-1.0) < EPS]
-        if len(index) == 0:
-            print(self.transition_param)
-            sys.exit('Transition probability matrix error!')
-        if N > self.max_len_trans:
-            vector = self.normalized_prob(vector[:,index[0]])
-            for i in range(len(self.params)):
-                self.set_IDR_param(i, 3, vector[i+1])
-        else:
-            u, u_inv = vector, np.linalg.inv(vector)
-            An = self.transition_param[0,]
-            for n in range(N):
-                Dn = np.diag(value**n)
-                An = An+(u*Dn*u_inv)[0]
-            An = self.normalized_prob(An)
-            for i in range(self.hclass-1):
-                self.set_IDR_param(i, 3, An[i+1])
+        # if N > self.max_len_trans: # get even probability!
+        #   self.set_new_p_eigen(value, vector, index)
+        u, u_inv = vector, np.linalg.inv(vector)
+        An = self.transition_param[0,].A1
+        # An = np.sum([(u*np.diag(value**n)*u_inv)[0] for n in range(N)], axis=0)
+        for n in range(N):
+            Dn = np.diag(value**n)
+            An1 = An+(u*Dn*u_inv)[0,:].A1
+            if max([abs(x-y) for x,y in zip(An1/sum(An1), An/sum(An))]) < EPS:
+                break
+            An = An1
+        An = self.normalized_prob(An)
+        for i in range(self.hclass-1):
+            self.set_IDR_param(i, 3, An[i+1])
         if self.verbose:
-            print('set new_p -> ', self.params)
+            print('Set new_p ->', self.params, sep='\t')
         self.HMM.set_pseudo_value(-1)
 
     def EM_CA_step(self, sindex, theta, index, min_val, max_val):
@@ -531,7 +323,6 @@ class ParamFitHMM:
             inner_theta = theta.copy()
             inner_theta[index] = theta[index] + alpha
             q = -self.HMM.q_function_const(sindex, inner_theta)
-            # print("alpha ->", index, alpha, q, inner_theta, theta)
             return q
         min_step_size = min_val - theta[index]
         max_step_size = max_val - theta[index]
@@ -542,8 +333,7 @@ class ParamFitHMM:
         return alpha, new_lhd
 
     def EM_CA_iteration(self, sindex, prev_theta, prev_lhd):
-        min_vals = [MIN_MU, MIN_SIGMA, MIN_RHO] #MIN_MIX_PARAM
-        max_vals = [MAX_MU, MAX_SIGMA, MAX_RHO] #MAX_MIX_PARAM
+        min_vals, max_vals, _ = bound_variables()
         update_amount = [0., 0., 0., 0.]
         new_lhd = [0., 0., 0., 0.]
         for index, (min_val, max_val) in enumerate(zip(min_vals, max_vals)):
@@ -553,41 +343,103 @@ class ParamFitHMM:
             new_lhd[index] = lhd
         return update_amount, new_lhd
 
-    def EM_iteration(self, sindex, init_theta, init_lhd, fix_mu, fix_sigma, eps, grad = True, alpha = 1e-6):
-        prev_theta, prev_lhd = init_theta.copy(), init_lhd
-        prev_theta, _        = clip_model_params(prev_theta)
-        min_vals = [MIN_MU, MIN_SIGMA, MIN_RHO] #MIN_MIX_PARAM
-        max_vals = [MAX_MU, MAX_SIGMA, MAX_RHO] #MAX_MIX_PARAM
-        new_lhd = [0., 0., 0., 0.]
-        if grad:
-            update_amount = self.HMM.q_function_grad()[sindex]
-        else:
-            update_amount, new_lhd = self.EM_CA_iteration(sindex, prev_theta, prev_lhd)
+    def EM_step(self, sindex, init_theta, init_lhd, fix_mu, fix_sigma, eps, alpha, update_amount, new_lhd = [0.0]):
+        prev_theta, prev_lhd = init_theta, init_lhd
+        min_vals, max_vals, max_change = bound_variables()
         for index, (min_val, max_val) in enumerate(zip(min_vals, max_vals)):
             if index == 0 and fix_mu: continue
             if index == 1 and fix_sigma: continue
             theta = prev_theta.copy()
-            # print(theta, alpha, update_amount)
-            theta[index] = theta[index]+alpha*(min(max(min_vals[index], update_amount[index]), max_vals[index]))
-            if grad or new_lhd[index] + eps >= prev_lhd:
-                if not grad and self.verbose:
-                   print(['mu', 'sigma', 'rho', 'q'][index], '('+str(new_lhd[index])+'-'+str(prev_lhd)+')', prev_theta[index], '->', theta[index])
+            # theta[index] = theta[index]+alpha*(min(max(min_vals[index], update_amount[index]), max_vals[index]))
+            change = np.sign(update_amount[index])*alpha*min(max_change[index], abs(update_amount[index]))
+            theta[index] = theta[index]+change
+            if len(new_lhd) < 3 or new_lhd[index] + eps >= prev_lhd:
                 theta, changed_params = clip_model_params(theta)
                 prev_theta = theta
         sys.stdout.flush()
         return prev_theta, max(new_lhd)
 
+    def EM_LBFGS_step(self, sindex, init_theta, init_lhd, fix_mu, fix_sigma, eps, new_lhd = [0.0]):
+        global APPROX_GRAD
+        prev_theta, prev_lhd = init_theta, init_lhd
+        min_vals, max_vals, max_change = bound_variables()
+        for index, (min_val, max_val) in enumerate(zip(min_vals, max_vals)):
+            if index == 0 and fix_mu: continue
+            if index == 1 and fix_sigma: continue
+            theta = prev_theta.copy()
+            if self.verbose:
+                print('\tStart lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], theta[index])
+            alpha = fmin_l_bfgs_b(lbfgs_qfunc, theta[index], approx_grad=APPROX_GRAD, args=(index, sindex, theta, self.HMM), bounds=[(min_vals[index], max_vals[index])], factr=eps)
+            # alpha = fmin_l_bfgs_b(lbfgs_qfunc, theta[index], args=(index, sindex, theta, self.HMM), bounds=[(min_vals[index], max_vals[index])], factr=eps)
+            if self.verbose:
+                print('\tEnd lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], alpha)
+                sys.stdout.flush()
+            theta[index] = float(alpha[0][0])
+            if len(new_lhd) < 3 or new_lhd[index] + eps >= prev_lhd:
+                theta, changed_params = clip_model_params(theta)
+                prev_theta = theta
+        sys.stdout.flush()
+        return prev_theta, max(new_lhd)
+
+    def EM_iteration_grad(self, iter_count, lhd, fix_mu, fix_sigma, alpha):
+        break_flag = False
+        # update_amount = self.HMM.q_function_grad()
+        thetas, pseudo_lhds = [], []
+        for j in range(len(self.v)):
+            prev_theta = self.get_IDR_params(j)
+            # theta, pseudo_lhd = self.EM_step(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10., alpha=alpha, update_amount=update_amount[j])
+            theta, pseudo_lhd = self.EM_LBFGS_step(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=1e7) # (extremely high precision), or 1e7 for moderate accuracy
+            thetas.append(copy.deepcopy(theta))
+            pseudo_lhds.append(pseudo_lhd)
+        for j in range(len(self.v)):
+            prev_theta = self.get_IDR_params(j)
+            sum_param_change, mean_pseudo_val_change = self.check_value_change(iter_count, j, prev_theta, thetas[j], pseudo_lhds[j])
+            if not (iter_count > 5 and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
+                pass
+            else:
+                break_flag = True
+        return break_flag
+
+    def EM_iteration_grad_previous(self, iter_count, lhd, fix_mu, fix_sigma, alpha):
+        break_flag = True
+        for j in range(len(self.v)):
+            prev_theta = self.get_IDR_params(j)
+            # theta, pseudo_lhd = self.EM_step(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10., alpha=alpha, update_amount=update_amount[j])
+            theta, pseudo_lhd = self.EM_LBFGS_step(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10.)
+            sum_param_change, mean_pseudo_val_change = self.check_value_change(iter_count, j, prev_theta, theta, pseudo_lhd)
+            if not (iter_count > 5 and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
+                break_flag = False
+        return break_flag
+
+    def EM_iteration_numeric(self, iter_count, lhd, fix_mu, fix_sigma, alpha):
+        break_flag = True
+        prev_lhd = lhd
+        for j in range(len(self.v)):
+            prev_theta = self.get_IDR_params(j)
+            update_amount, new_lhd = self.EM_CA_iteration(sindex, prev_theta, prev_lhd)
+            theta, max_new_lhd = self.EM_step(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10., alpha=alpha, update_amount=update_amount, new_lhd=new_lhd)
+            if self.verbose:
+                for i in range(len(new_lhd)):
+                    print(['mu', 'sigma', 'rho', 'q'][index], '('+str(new_lhd[index])+'-'+str(prev_lhd)+')', prev_theta[index], '->', theta[index] )
+            sum_param_change, mean_pseudo_val_change = self.check_value_change(iter_count, j, prev_theta, theta, max_new_lhd)
+            if not (iter_count > 5 and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
+                break_flag = False
+        return break_flag
+
     def print_dataset_for_each_sample(self, index, IDR, head):
         flag = 'a'
         with open(self.idr_output, flag) as f:
             for i in range(0, len(self.stop_sites)-1):
-                start, end = self.stop_sites[i]+1, self.stop_sites[i+1]+1
-                tIDR = IDR[start:end]
-                if self.skip_start > 0:
-                    tIDR = np.append([float('nan')]*self.skip_start, tIDR)
-                if self.skip_end > 0:
-                    tIDR = np.append(tIDR, [float('nan')]*self.skip_end)
-                f.write(head+"\t"+self.keys[i+1]+"\t"+['cond', 'case'][index]+"\t"+":".join([("%.4e" % x) for x in tIDR])+"\n")
+                start, end = self.stop_sites[i], self.stop_sites[i+1]
+                if end-start == 1:
+                    tIDR = [float('nan')]*self.length_list[i]
+                else:
+                    tIDR = IDR[start:end]
+                    if self.skip_start > 0:
+                        tIDR = np.append([float('nan')]*self.skip_start, tIDR)
+                    if self.skip_end > 0:
+                        tIDR = np.append(tIDR, [float('nan')]*self.skip_end)
+                f.write(head+"\t"+self.keys[i+1]+"\t"+self.cond_name[index]+"\t"+";".join([("%.4e" % x) for x in tIDR])+"\n")
 
     def print_header_for_each_sample(self, index, data, head):
         if index == 0:
@@ -596,26 +448,32 @@ class ParamFitHMM:
             flag = 'a'
         with open(self.idr_output, flag) as f:
             for i, temp in enumerate(data):
-                f.write(head+"\t"+self.keys[i+1]+"\t"+['cond', 'case'][index]+"\t"+":".join(list(map(str, temp)))+"\n")
+                f.write(head+"\t"+self.keys[i+1]+"\t"+self.cond_name[index]+"\t"+";".join(list(map(str, temp)))+"\n")
 
     def print_reference_for_each_sample(self, index, ref, head, key):
         flag = 'a'
         with open(self.idr_output, flag) as f:
-            f.write(head+"\t"+key+"\t"+['cond', 'case'][index]+"\t"+":".join([("%.4e" % x) for x in ref])+"\n")
+            f.write(head+"\t"+key+"\t"+self.cond_name[index]+"\t"+";".join([("%.4e" % x) for x in ref])+"\n")
 
     def write_header_to_file(self):
         for i in range(len(self.v)):
             param = self.get_IDR_params(i)
             offset = max(0, self.skip_start)+max(0, self.skip_end)
-            position = [list(range(0, self.stop_sites[i+1]-self.stop_sites[i]+offset)) for i in range(0, len(self.stop_sites)-1)]
+            position = [list(range(0, self.stop_sites[i+1]-self.stop_sites[i]+offset)) for i in range(len(self.stop_sites)-1)]
             self.print_header_for_each_sample(i, position, "type")
 
     def write_idr_value_to_file(self):
         for i in range(len(self.v)):
             param = self.get_IDR_params(i)
-            z1, z2 = self.v[i]
-            localIDRs, IDR = get_idr_value(z1, z2, param)
+            localIDRs, IDR = get_idr_value_23dim(param, *self.v[i])
             self.print_dataset_for_each_sample(i, IDR, "IDR")
+
+    def write_count_value_to_file(self, data):
+        for i in range(len(data)):
+            with open(self.idr_output, 'a') as f:
+                for key in self.keys[1:]:
+                    mean_value = np.mean([[x if x == x else 0.0 for x in temp[key]] for temp in data[i]], axis=0)
+                    f.write('count'+"\t"+key+"\t"+self.cond_name[i]+"\t"+";".join([str(x) for x in mean_value])+"\n")
 
     def write_responsibility_to_file(self, head):
         for i in range(len(self.v)):
@@ -623,19 +481,39 @@ class ParamFitHMM:
             IDR = [1.-self.HMM.responsibility_state(x, i+1) for x in range(self.length)]
             self.print_dataset_for_each_sample(i, IDR, head)
 
-    def visualize_IDR_file(self):
+    def write_reference_to_file(self):
         if len(self.ref) > 0:
-            struct_dict = get_struct_dict(self.ref)
-            for key in struct_dict.keys():
-                self.print_reference_for_sample(0, struct_dict[key], "ref", key)
+            struct_dict = get_struct_dict(self.ref, dot_blacket_to_float)
+            for key in self.keys:
+                if key == chr(0):   continue
+                for i in range(len(self.v)):
+                    if self.train:
+                        assert key in struct_dict
+                    if key in struct_dict:
+                        self.print_reference_for_each_sample(i, struct_dict[key], "ref", key)
 
+    def hmm_grid_search(self, index):
+        if self.core > 1:
+            return hmm_grid_search_multi_cores(self.core, *self.v[index])
+        else:
+            return hmm_grid_search(*self.v[index])
 
-    def set_init_theta(self):
+    def set_init_theta(self, grid, noHMM=False, omit_unmappaple=False, fix_mu=False, fix_sigma=False):
         for i in range(len(self.v)):
-            gtheta = hmm_grid_search(self.v[i][0], self.v[i][1])
-            lhd = log_lhd_loss(self.v[i][0], self.v[i][1], gtheta)
-            tlhd = log_lhd_loss(self.v[i][0], self.v[i][1], self.get_IDR_params(i))
-            print("# Grid search: ", gtheta, lhd, tlhd)
+            gtheta = self.get_IDR_params(i)
+            lhd = log_lhd_loss_23dim(gtheta, *self.v[i])
+            if not fix_mu and not fix_sigma:
+                if grid:
+                    gtheta = self.hmm_grid_search(i)
+                    lhd = log_lhd_loss_23dim(gtheta, *self.v[i])
+            if noHMM:
+                if len(self.v[i]) == 3: # replicate
+                    gtheta, lhd = estimate_copula_params(*self.v[i], theta_0=gtheta, grid=False, fix_mu=fix_mu, fix_sigma=fix_sigma)
+                else:                   # duplicate
+                    gtheta, lhd = estimate_copula_params(*self.v[i], theta_0=gtheta, grid=False, fix_mu=fix_mu, fix_sigma=fix_sigma)
+            tlhd = log_lhd_loss_23dim(self.get_IDR_params(i), *self.v[i])
+            if self.verbose:
+                print("Initial: Grid search.", gtheta, lhd, tlhd, '(best_theta,new_lhd,cur_lhd)')
             if tlhd < lhd:
                 self.set_IDR_params(i, list(gtheta))
 
@@ -646,57 +524,186 @@ class ParamFitHMM:
             params = self.get_IDR_params()
         return self.HMM.forward_backward(transition_param, params)
 
+    def print_setting(self, header, N, grid, fix_mu, fix_sigma):
+        if not self.verbose:    return
+        print("Settings--------")
+        print("\tHidden class:", self.hclass)
+        print("\tMode:", header)
+        print("\tRepeat:", N)
+        if grid: print("\tGrid search: on")
+        if fix_mu: print("\tFix mu: on")
+        if fix_sigma: print("\tFix sigma: on")
+        print("\tSkip start-end:", self.skip_start, self.skip_end)
+        print("\tMax length setting:", self.max_len)
+        if self.train:
+            print("\tTraining: on")
+        if self.independent:
+            print("\tIndependent: on")
+        print("\tReference file:", self.ref)
+        print("\tOutput file:", self.idr_output)
+        if len(self.DMS_file) > 0:
+            print("\tDMS setting: on (", self.DMS_file, ")")
+        print("First copula parameters:")
+        print(self.params, sep="")
+        print("Default transition_param:")
+        print_mat_one_line(self.transition_param, '\n')
+        sys.stdout.flush()
+
     def print_result(self):
         if self.verbose:
             print("HMM: print result.")
             self.HMM.print_result()
 
+    def write_params(self, fname=None):
+        if fname is None:
+            fname = self.default_param_file
+        if self.verbose:
+            print("Write to param file: ", "final_param.txt")
+        with open(fname, 'w') as f:
+            f.write(write_mat_one_line(self.transition_param))
+            f.write("\n")
+            f.write(str(self.params))
+            f.write("\n")
+
+    def read_params(self, fname="final_param.txt"):
+        if fname is None:
+            fname = self.default_param_file
+        with open(fname) as f:
+            lines = f.readlines()
+            try:
+                self.transition_param = np.matrix(eval(lines[0]), dtype=float)
+                self.params = eval(lines[1].rstrip('\n'))
+                assert self.transition_param.shape == (self.hclass, self.hclass)
+                assert len(self.params) >= 1 and all([len(p) == 4 for p in self.params])
+                if self.verbose:
+                    print("Read from param file: ", fname)
+            except:
+                if self.verbose:
+                    print("Param file error: ", fname)
+
     def check_value_change(self, iindex, index, prev_theta, theta, new_lhd):
-        prev_z1, prev_z2 = self.get_pseudo_value(index)
+        prev_z_list = self.get_pseudo_value(index)
         self.set_IDR_params(index, theta)
         self.HMM.set_pseudo_value(index)
-        z1, z2 = self.get_pseudo_value(index)
-        mean_pseudo_val_change = np.mean([np.abs(p-z) for p, z in zip(prev_z1, z1)]) + np.mean([np.abs(p-z) for p, z in zip(prev_z2, z2)])
-        sum_param_change = sum([np.abs(x-y) for x, y in zip(theta, prev_theta) ])#np.abs(theta - prev_theta).sum()
-        print(("Iter %i" % iindex).ljust(12), ("Dataset %i" % index),
-            "%.2e" % sum_param_change,
-            "%.2e" % mean_pseudo_val_change,
-            "%.4e" % new_lhd,
-            theta, )
+
+        z_list = self.get_pseudo_value(index)
+        mean_pseudo_val_change = sum([np.mean([np.abs(p-z) for p, z in zip(prev_z_list, z_list)])])
+        sum_param_change = sum([np.abs(x-y) for x, y in zip(theta, prev_theta) ]) #np.abs(theta - prev_theta).sum()
+        if self.verbose:
+            print(("Iter %i" % iindex), ("Dataset %i" % index),
+                "%.2e" % sum_param_change,
+                "%.2e" % mean_pseudo_val_change,
+                "%.4e" % new_lhd,
+                theta, )
+            print('Set new_theta', theta)
         return sum_param_change, mean_pseudo_val_change
 
-    def hmm_EMP_with_pseudo_value_algorithm_test(self, grid = False, N = 100, EPS = 1e-4, fix_mu = False, fix_sigma = False):
-        self.hmm_EMP_with_pseudo_value_algorithm(grid, N, EPS, fix_mu, fix_sigma, True)
+    def init_result_file(self, data):
+        self.write_header_to_file()
+        self.write_count_value_to_file(data)
 
-    def hmm_EMP_with_pseudo_value_algorithm(self, grid = False, N = 100, EPS = 1e-4, fix_mu = False, fix_sigma = False, test = False):
-        if grid:
-            self.set_init_theta()
+    def write_first_result(self):
+        self.write_reference_to_file()
+        self.write_idr_value_to_file()
+
+    def parameter_optimization_iter(self, index, space, fix_mu=False, fix_sigma=False, fix_trans=False):
+        if not fix_trans:
+            self.set_new_transition(str(index))
+            self.set_new_p(first=(index == 0))
         lhd = self.apply_forward_backward()
-        print('(initial) new lhd ->\t%f ' % (lhd), end='\t')
-        print(0, -1, self.get_IDR_params(), end=' ', sep='\t')
+        if self.verbose:
+            print('(%d time) new lhd ->\t%f' % (index, lhd), end='\t')
+            print(index, -1, self.get_IDR_params(), end='\t', sep='\t')
+            print_mat_one_line(self.transition_param, '\n')
+            # print('alpha->', 10**space[index], sep="\t")
+        break_flag = self.EM_iteration_grad(index, lhd, fix_mu, fix_sigma, 10**space[index])
+        # break_flag = self.EM_iteration_numeric(i, lhd, fix_mu, fix_sigma, space[i]) # Numerical differentiation.
+        return lhd, break_flag
+
+    def allocate_seq_based_hclass(self, ref, hidden):
+        struct_dict = get_struct_dict(ref, seq_to_float)
+        if hidden is None:
+            if self.hclass == 3:
+                hidden = convert_to_hidden_dict(struct_dict, lambda x: -1 if (x == 0 or x == 1) else 0)
+            else:
+                hidden = convert_to_hidden_dict(struct_dict, lambda x: 1 if (x == 0 or x == 1) else 0)
+        else:
+            hidden_seq = convert_to_hidden_dict(struct_dict, lambda x: 1 if (x == 0 or x == 1) else 0)
+            print(hidden_seq)
+            for x in hidden:
+                if x not in hidden_seq: hidden.pop(x)
+                else:
+                    hidden[x] = [int(i*j) for i, j in zip(hidden[x], hidden_seq[x])]
+        return hidden
+
+    def allocate_struct_based_hclass(self, ref, reverse):
+        struct_dict = get_struct_dict(ref, dot_blacket_to_float)
+        if self.hclass == 3:
+            hidden = convert_to_hidden_dict(struct_dict, lambda x: 2 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
+            if reverse:
+                hidden = [[0, 2, 1, -1][x] for x in hidden]
+        else:
+            if reverse:
+                hidden = convert_to_hidden_dict(struct_dict, lambda x: 1 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 0)
+            else:
+                hidden = convert_to_hidden_dict(struct_dict, lambda x: 0 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
+        return hidden
+
+    def train_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans, param_file)
+
+    def test_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
+        if param_file is not None:
+            self.read_params(param_file)
+        self.estimate_hmm_based_IDR(grid, 0, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
+
+    def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
+        self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
+        self.estimate_hmm_based_IDR(grid, N=-1, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans)
+
+    def estimate_hmm_based_IDR_debug(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False):
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans, debug=True)
+
+    def print_time(self, head):
+        if self.time is None:
+            self.time = [time.time(), time.clock()]
+            print("Time check:", head, self.time[0], self.time[1], '(process,time,clock)')
+        else:
+            current_time = time.time()
+            current_clock = time.clock()
+            print("Time check:", head, current_time - self.time[0], current_clock-self.time[1], '(process,time,clock)')
+            self.time = [current_time, current_clock]
+            if head == 'global' or head == 'last_iter':
+                print("Memory check:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "(bytes)")
+
+    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None, debug=False, test=False):
+        """ N=-1: no forward-backward (IDR computation). N=0 -> forward-backward once with trained parameters."""
+        self.print_time('start')
+        self.print_setting("IDR-HMM", N, grid, fix_mu, fix_sigma)
+        if N > 0 and grid:
+            self.set_init_theta(grid, fix_mu=fix_mu, fix_sigma=fix_sigma)
+        self.write_first_result()
+        self.print_time('global')
+        if N < 0:   return
+        lhd = self.apply_forward_backward()
+        if self.verbose:
+            print('--------')
+            print('(initial) new lhd ->\t%f ' % (lhd), end='\t')
+            print(0, -1, self.get_IDR_params(), end=' ', sep='\t')
         print_mat_one_line(self.transition_param, '\n')
         space = np.linspace(-1., np.log10(EPS), N)
-        self.write_header_to_file()
-        self.write_idr_value_to_file()
         for i in range(N):
-            break_flag = True
-            self.set_new_transition()
-            self.set_new_p()
-            lhd = self.apply_forward_backward()
-            print('(%d time) new lhd ->\t%f' % (i, lhd), end='\t')
-            print(i, -1, self.get_IDR_params(), end='\t', sep='\t')
-            print_mat_one_line(self.transition_param, '\n')
-            for j in range(len(self.v)):
-                prev_theta = self.get_IDR_params(j)
-                theta, new_lhd = self.EM_iteration(j, prev_theta, lhd, fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10., grad=True, alpha=10**space[i])
-                sum_param_change, mean_pseudo_val_change = self.check_value_change(i, j, prev_theta, theta, new_lhd)
-                if not (i > 5 and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
-                    break_flag = False
-            if test:
-                # print('(%d-th dataset) new lhd -> %f ' % (j, new_lhd))
+            if self.verbose:
+                print('--------')
+            lhd, break_flag = self.parameter_optimization_iter(i, space, fix_mu, fix_sigma, fix_trans)
+            if debug:
                 self.write_responsibility_to_file("IDR-HMM-"+str(i))
-            if break_flag or i == N-1:
-                self.print_result()
-                self.write_responsibility_to_file("IDR-HMM-final")
+            self.print_time(str(i)+"_iter")
+            if break_flag:
                 break
-
+        if self.verbose:
+            if debug: self.print_result()
+            print('--------')
+        self.write_responsibility_to_file("IDR-HMM-final")
+        if N > 0: self.write_params(param_file)
+        self.print_time("last_iter")
