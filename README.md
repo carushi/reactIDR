@@ -1,21 +1,26 @@
 # reactIDR
 * A novel algorithm to classify each nucleotide into stem, loop, or unmappable regions from high-throughput structure probing data
-* Input and Output
+* Input
+	* Bam file
+* Output
+	* IDR (1-posterior probability of stem or loop class)
+* Dataflow
 	* bam -> (Docker) -> bed -> (scripts) -> tab file (score or raw read count) -> global and local IDR
-* Target (tested):
+* Target high-throughput structure analyses
 	* PARS
+	* SHAPE-Seq
 	* icSHAPE
-	* DMS (assumed to be enriched only at A or C)
+	* DMS-Seq (assumed to be enriched only at A or C)
 
 ## Requirement
 * python3
 * [idr package](https://github.com/nboley/idr) (if you would like to predict global IDR)
-
-* Setup
+* Setup command (shown below)
 
 ```
 cd src/
 python setup.py  build_ext --inplace
+# cython build
 ```
 
 ## Example
@@ -55,3 +60,6 @@ python src/IDR_hmm.py --test  --time 10 --core 6        --param sample_param.txt
 	* format: NAME <tab> 0;1;2;3;.....
 * tab_to_csv.py
 	* use to append raw count (read count, coverage, ...) to the output csv file
+
+## TODO
+* apply to MaP analyses
