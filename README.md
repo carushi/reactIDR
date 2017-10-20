@@ -14,6 +14,10 @@
 
 ## Requirement
 * python3
+<<<<<<< HEAD
+=======
+* numpy
+>>>>>>> updated
 * [idr package](https://github.com/nboley/idr) (if you would like to predict global IDR)
 * Setup command (shown below)
 

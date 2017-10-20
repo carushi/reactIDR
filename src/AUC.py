@@ -69,15 +69,16 @@ def calc_tp_fp(answer, pred, pos, verbose=True, narm=True, negative=False, assym
     return tpr, fpr, auc
 
 def pred_conversion(pred, narm, negative, pos, answer):
+    STEP = 1e10
     converted = pred.copy()
     if negative:
         converted = [-x for x in converted]
     if narm:
         # answer = [answer[i] for i in range(len(answer)) if pred[i] == pred[i]]
         # pred = [pred[i] for i in range(len(pred)) if pred[i] == pred[i]]
-        inf = ("-1e10" if pos == int(0) else "1e10")
+        inf = ("-1e20" if pos == int(0) else "1e20")
         converted = [x if x == x else float(inf) for x in converted]
-    converted = [x*100 for x in converted]
+    converted = [x*STEP for x in converted]
     return converted, answer
 
 def pred_conversion_assym(pred, narm, negative, pos, answer):
@@ -97,9 +98,9 @@ def calc_precision_recall(answer, pred, pos, verbose=True, narm=True, negative=F
     else:
         converted_p, answer = pred_conversion(pred, narm, negative, pos, answer)
     precision, recall, thresholds = metrics.precision_recall_curve(answer, converted_p, pos_label=pos)
-    print("precision", precision, file=sys.stderr)
-    print("recall", recall, file=sys.stderr)
-    print("thresholds", "\t".join(list(map(str, thresholds))), file=sys.stderr)
+    # print("precision", precision, file=sys.stderr)
+    # print("recall", recall, file=sys.stderr)
+    # print("thresholds", "\t".join(list(map(str, thresholds))), file=sys.stderr)
     auc = metrics.auc(recall, precision)
     return precision, recall, auc
 

@@ -130,7 +130,6 @@ def append_integrated_transcript(lines, skip, seta=None, minus_strand=False, bou
                         concat_data.extend([float("-inf")])
                 if len(concat_data) > 0:
                     all_concat.append([score_type, name, sample]+concat_data)
-    print([len(x) for x in all_concat], all_concat)
     return trans_list, all_concat
 
 def append_integrated_transcript_count(lines, skip, seta=None, boundary=False):
@@ -141,9 +140,9 @@ class AccEval:
     def __init__(self, arg):
         self.sep=";"
         self.skip = 3 # first index of probability
-        self.blty={'count': 'o', 'IDR-HMM-final': '--', 'IDR':'-.', 'score':'-', 'BUMHMM':':', 'noHMMIDR':'-.'}
-        self.lty={'count': '--', 'IDR-HMM-final': '-', 'IDR':'-', 'score':'--', 'BUMHMM':':', 'noHMMIDR':'-'}
-        self.color={'count': '0', 'IDR-HMM-final': 'red', 'IDR': 'violet', 'score':'b', 'BUMHMM':'g', 'noHMMIDR': 'orange'}
+        self.blty={'count': 'o', 'IDR-HMM-final': '--', 'IDR':'-.', 'score':'-', 'BUMHMM':':', 'noHMMIDR':'-.', 'PROBer':'x'}
+        self.lty={'count': '--', 'IDR-HMM-final': '-', 'IDR':'-', 'score':'--', 'BUMHMM':':', 'noHMMIDR':'-', 'PROBer': '-.'}
+        self.color={'count': '0', 'IDR-HMM-final': 'red', 'IDR': 'violet', 'score':'b', 'BUMHMM':'g', 'noHMMIDR': 'orange', 'PROBer': 'gray'}
         # , '.', ',', 'o', 'v', '^', '<', '>', 's']
         self.comp_sample = False
         self.arg = arg
@@ -171,7 +170,7 @@ class AccEval:
         return lines
 
     def reduce_dataset(self, tlines):
-        primary_type = ['type', 'ref', 'count', 'IDR', 'score', 'IDR-HMM_0', 'IDR-HMM-final', 'BUMHMM']
+        primary_type = ['type', 'ref', 'count', 'IDR', 'score', 'IDR-HMM_0', 'IDR-HMM-final', 'BUMHMM', 'PROBer']
         index = [i for i, contents in enumerate(tlines) if contents[0] in primary_type]
         return index
 
@@ -193,10 +192,17 @@ class AccEval:
         for trans in list(set([contents[1] for contents in lines])):
             fprefix = prefix+"_"+trans
             data = [contents for contents in lines if contents[1] == trans]
-            if len(data) == 0:  continue
+            if trans != 'all_unknown':
+                continue
+            print(trans)
+            print(len(data))
+            if len(data) == 0:
+                continue
+            print(trans)
             dict_count = get_sample_dict(data, self.skip)
             if 'type' not in dict_count[0]:
                 continue
+            print(dict_count[0].keys())
             if self.arg.dscatter:
                 self.plot_double_scatter(trans, dict_count, fprefix)
             elif self.arg.auc:
@@ -215,7 +221,7 @@ class AccEval:
         if len(dict_count) == 0:
             return mat, row_labels
         keys = list(dict_count[0].keys())+list(dict_count[1].keys())
-        keys = [key for key in ['ref', 'count', 'score', 'IDR', 'IDR-HMM-final', 'BUMHMM'] if key in keys]
+        keys = [key for key in ['ref', 'count', 'score', 'IDR', 'IDR-HMM-final', 'BUMHMM', 'PROBer'] if key in keys]
         if len(keys) == 1 and keys[0] == 'score':
             return [], []
         for i, key in enumerate(keys):
@@ -303,7 +309,8 @@ class AccEval:
             answer = set_positive_negative(dict_count[0]['ref'], sp)
             fig=plt.figure(1)
             count = 0
-            for score_type in ["count", "score", "IDR", "IDR-HMM-final", "BUMHMM", "noHMMIDR"]:
+            # for score_type in ["count", "score", "IDR", "IDR-HMM-final", "BUMHMM", "noHMMIDR", 'PROBer']:
+            for score_type in ["count", "score", "IDR-HMM-final"]:
                 all_data = []
                 row_labels = []
                 for i, sample in enumerate(["case", "cont"]):
@@ -379,12 +386,14 @@ class AccEval:
                             fig.set_size_inches((8, 6))
                         fprefix = prefix+"_"+sp+sample+("_assym" if assym else "")
                         ymin = 1
-                        for score_type in ["count", "score", "IDR", "IDR-HMM-final", "noHMMIDR", "BUMHMM"]:
+                        for score_type in ["count", "score", "IDR-HMM-final", "noHMMIDR", "BUMHMM", 'PROBer']:
                             if score_type not in dict_count[i]:
                                 print("No data!", score_type, file=sys.stderr)
                                 continue
                             pos = self.get_pos(sample, score_type)
                             pred = [one_minus_nan_float(val) if "IDR" in score_type else nan_float(val) for val in dict_count[i][score_type]]
+                            if score_type == 'noHMMIDR':
+                                print(set(pred))
                             if curve == "auc":
                                 tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
                                 xlab, ylab = "1-Specificity", "Sensitivity"
@@ -413,13 +422,15 @@ class AccEval:
             for score_type in ["count", "IDR", "IDR-HMM-final"]:
                 for sample in ['case']:
                     pos = self.get_pos(sample, score_type)
+                    if score_type not in dict_count[0] or score_type not in dict_count[1]:
+                        continue
                     pred = compute_ratio(dict_count[0][score_type], dict_count[1][score_type], ("IDR" in score_type))
                     if sample == 'cont':
                         pred = [-x for x in pred]
                     tpr, fpr, auc = calc_tp_fp(answer, pred, pos)
                     print("AUC_ratio", score_type, prefix, sample, auc)
                     if pos == 1: fig.add_subplot(111).plot(fpr, tpr, color=self.color[score_type], lw=1, label=score_type)
-                else: fig.add_subplot(111).plot(fpr, tpr, color=self.color[score_type], lw=1, label=score_type)
+                    else: fig.add_subplot(111).plot(fpr, tpr, color=self.color[score_type], lw=1, label=score_type)
                 count += 1
             fig.add_subplot(111).set_ylim([0, 1])
             fig.add_subplot(111).set_xlim([0, 1])
@@ -474,7 +485,7 @@ class AccEval:
         fprefix = prefix+"_"+sp+sample+("_assym" if assym else "")
         ymin = 1
         for filter_type in ['upper', 'lower']:
-            for score_type in ["count", "score", "IDR", "IDR-HMM-final", "noHMMIDR", "BUMHMM"]:
+            for score_type in ["count", "score", "IDR", "IDR-HMM-final", "noHMMIDR", "BUMHMM", 'PROBer']:
                 if score_type not in dict_count[index]:
                     print("No data!", score_type, file=sys.stderr)
                     continue
@@ -493,8 +504,8 @@ class AccEval:
     def plot_all_auc(self, tname, dict_count, prefix):
         if 'ref' in dict_count[0]:
             print(dict_count[0].keys())
-            print(dict_count[0]['count'])
-            print(dict_count[1]['count'])
+            if 'count' in dict_count[0]:    print(dict_count[0]['count'])
+            if 'count' in dict_count[1]:    print(dict_count[1]['count'])
             self.calc_all_auc(dict_count, prefix, curve='auc')
             self.calc_all_auc(dict_count, prefix, curve='prc')
             self.calc_all_auc(dict_count, prefix, curve='prc', top=True)
@@ -701,7 +712,7 @@ class ScatVis:
                 rep_count = get_sample_dict(cdata, self.skip)
                 print(rep_count)
                 print(trans, rep_count[i].keys())
-                for score_type in ["noHMMIDR", "IDR-HMM-final", "BUMHMM", "count"]:
+                for score_type in ["noHMMIDR", "IDR-HMM-final", "BUMHMM", 'PROBer', "count"]:
                     if 'all' in trans:
                         if rep:
                             if sample == 'case':

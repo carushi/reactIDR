@@ -249,7 +249,6 @@ def write_pars_format_data_chr(options, file, names):
     read_counts = get_count_dict(file)
     baseCount = [0]*5
     for fa, seq in get_sequence(options.fasta, options.bam):
-        print(fa, seq)
         if fa in read_counts:
             for strand in read_counts[fa]:
                 value = []

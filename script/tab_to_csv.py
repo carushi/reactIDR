@@ -53,8 +53,10 @@ def thres_cut_float(s, prefix, thres=0):
         x = float(s) if "IDR" not in prefix else 1.-float(s)
         return -1. if x < thres else x
 
-def comp_threshold(score, top):
+def comp_threshold(score, prefix, top):
     temp = sorted([x for x in [none_float(x) for x in score] if x == x])
+    if "IDR" in prefix:
+        temp = [1.-float(s) for s in temp]
     if top == 0:
         return np.nanmin(temp)-1.
     th = temp[max(0, math.floor(float(top)/(100.)*len(temp))-1)]
@@ -72,8 +74,7 @@ def output_csv(trans, prefix, score, seq=""):
     if 'case' not in prefix:
         return
     for th in range(0, 101, 10):
-        thres = comp_threshold(score, th)
-        print(thres)
+        thres = comp_threshold(score, prefix, th)
         with open("shape_format_"+prefix+"_"+str(th)+".dat", 'w') as f:
             for i in range(len(score)):
                 f.write("\t".join([str(i+1), ('%.6f' % thres_cut_float(score[i], prefix, thres))])+"\n")

@@ -7,6 +7,11 @@ def log(s):
 
 MAXLINE=-1
 
+def nan_float(s, min_f=0):
+    if s in ['None', 'NA', 'none']:
+        return min_f
+    return float(s)
+
 def common_transcript(dict1, dict2, dict3=None):
     if dict3 is None:
         return set(dict1.keys()) & set(dict2.keys())
@@ -105,9 +110,8 @@ def parse_score_tri_iterator(file, header=True):
                 header = False
                 continue
             contents = line.rstrip('\n').split('\t')
-            key = contents[0].split('|')[0]
-            if '|' in contents[0]:  key += contents[0].split('|')[-1]
-            yield key, [list(map(float, score.split(';'))) for score in contents[1:]]
+            key = get_name(contents[0])
+            yield key, [list(map(nan_float, score.split(';'))) for score in contents[1:]]
 
 def get_print_str_score(data):
     seq = '\t'
@@ -188,6 +192,28 @@ def get_dict_common_keys(dicts):
 def estimate_rpkm(rep, total):
     rpkm = sum([sum(t) for t in rep])
     return rpkm/len(rep[1])*10000000000/total
+
+def get_name(line, trans_convert=True):
+    if trans_convert and '|' in line:
+        name = line.split('|')[0]
+        name += line[-1]
+    else:
+        name = line
+    return name
+
+def get_struct_dict(file, func, trans_convert=True):
+    struct_dict = {}
+    with open(file) as f:
+        name = "", ""
+        for line in f.readlines():
+            if line == "" or line[0] == "#":
+                continue
+            if line[0] == '>':
+                name = get_name(line[1:].rstrip('\n'))
+                struct_dict[name] = []
+            else:
+                struct_dict[name] += [func(c) for c in line.rstrip('\n')]
+    return struct_dict
 
 
 # def parse_score_rowwise(file, sep):

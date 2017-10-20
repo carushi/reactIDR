@@ -1,6 +1,13 @@
 import sys
+<<<<<<< HEAD
 import utility
 import numpy as np
+=======
+import os
+import utility
+import numpy as np
+from scipy.optimize import fminbound
+>>>>>>> updated
 from scipy.stats import rankdata
 import matplotlib.pyplot as plt
 from prob_optimize import *
@@ -87,7 +94,7 @@ try:
 
         def f(alpha):
             inner_theta[index] = theta[index] + alpha
-            return -calc_mix_gaussian_log_lhd_23dim(z1, z2, z3, inner_theta)
+            return -calc_mix_gaussian_lhd_23dim(z1, z2, z3, inner_theta)
 
         assert theta[index] >= min_val
         min_step_size = min_val - theta[index]
@@ -192,10 +199,9 @@ try:
             if not fix_mu and not fix_sigma:
                 theta, new_lhd, changed_params = EM_iteration_23dim(*data, prev_theta=prev_theta, max_iter=max_num_EM_iter,
                                                                     fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10.)
-
             if fix_mu or fix_sigma or changed_params:
                 theta = prev_theta
-                theta, new_lhd = CA_iteration_3dim(*data, prev_theta=prev_theta, max_iter=max_num_EM_iter,
+                theta, new_lhd = CA_iteration_23dim(*data, prev_theta=prev_theta, max_iter=max_num_EM_iter,
                                                     fix_mu=fix_mu, fix_sigma=fix_sigma, eps=EPS/10.)
 
             sum_param_change = sum([np.abs(c-p) for c, p in zip(theta , prev_theta)])

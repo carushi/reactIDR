@@ -4,8 +4,10 @@ __pycache__/
 *$py.class
 temp
 test_script
+test*/
 misc
 .DS_Store
+*/.DS_Store
 
 # C extensions
 *.so
