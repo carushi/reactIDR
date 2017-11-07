@@ -10,10 +10,6 @@ import matplotlib.patches as mpatches
 from scipy.stats import rankdata, kde
 
 def moving_average(interval, window_size):
-    # print(interval)
-    # for i in range(0, len(interval)):
-    #     end = min(len(interval), i+window_size)
-    #     print(end, i, np.nanmean(interval[i:end]), interval[i:end])
     return [np.nanmean(interval[i:min(len(interval), i+window_size)]) for i in range(0, len(interval))]
     # window = np.ones(int(window_size))/float(window_size)
     # return np.convolve(interval, window, 'same')
@@ -25,6 +21,7 @@ def get_parser():
     parser.add_argument("--header", dest="header", action="store_true", help="skip header.", required=False)
     parser.add_argument("--window", dest="window", type=int, help="window size for averaging", default=5, required=False)
     parser.add_argument("--output", dest="output", type=str, help="output name", default="out", required=False)
+    parser.add_argument("--bed", dest="bed", type=str, help="File name prefix for bed files about a diversity area.", default="", required=False)
     # parser.add_argument("--case", dest="case", type=str, help="read replicate data from FILE1, FILE2, ...", metavar="CASE", required=True)
     # parser.add_argument("--control", dest="control", type=str, help="read replicate data from FILE1, FILE2, ...", metavar="CONTROL", required=False)
     # # parser.add_argument("--coverage", dest="coverage", nargs='+', type=str, help="use the ratio of read enrichment based on coverage", metavar="COVERAGE", required=False)
@@ -128,8 +125,32 @@ class DiffVis:
         plt.savefig(key+'_'+method+'_'+str(self.arg.window)+self.arg.output+'_'+sample+'_difference.pdf')
         plt.clf()
 
-    def write_bed_files(self, prefix, method, region, ann):
-        pass
+    def write_bed_files(self, prefix, method, x, y, sample, thres):
+        chrom = x[0]
+        diff_list = []
+        x_vec = ([line[3] for line in x[1] if line[0] == method and line[2] == sample])[0].split(';')
+        y_vec = ([line[3] for line in x[1] if line[0] == method and line[2] == sample])[0].split(';')
+        for i, (l, r) in enumerate(zip(x_vec, y_vec)):
+            l, r = float(l), float(r)
+            if l != l:  l = 0.0
+            if r != r:  r = 0.0
+            diff = l-r
+            print(l, r, diff, diff_list)
+            if abs(diff) >= thres:
+                if (len(diff_list) == 0 or np.sign(diff) == np.sign(diff_list[0])):
+                    diff_list.append(diff)
+                    continue
+            if len(diff_list) > 0:
+                chromstart = i-len(diff_list)
+                chromend = i
+                yield '\t'.join([prefix, chromstart, chromend, '', mean(diff_list), '+'])+'\n'
+                diff_list = []
+            if abs(diff) >= thres:
+                diff_list.append(diff)
+        if len(diff_list) > 0:
+            chromstart = i-len(diff_list)
+            chromend = i
+            yield '\t'.join([prefix, chromstart, chromend, sample, mean(diff_list), '+'])+'\n'
 
     def read_data(self, method, fname, sample):
         data = []
@@ -144,7 +165,7 @@ class DiffVis:
                     continue
                 if name != contents[1]:
                     if len(name) > 0:
-                        print(name, data)
+                        # print(name, data)
                         yield name, data
                     name = contents[1]
                     data = []
@@ -156,23 +177,36 @@ class DiffVis:
     def visualize_parameter(self):
         lines = []
         for method in ["IDR-HMM-final", "count"]:
+            if method == 'count':
+                continue
+            thres = 0.5
             for sample in ['case', 'cont']:
+                if sample != 'cont':
+                    continue
                 transcript = []
                 prefix = os.path.basename(self.arg.input[0])
                 append = False
                 data = []
                 for input in self.arg.input:
                     data.append(self.read_data(method, input, sample))
-                print(data)
+                # print(data)
                 try:
-                    while True:
-                        x, y = data[0].__next__(), data[1].__next__()
-                        assert x[0] == y[0]
-                        if x[0][-1] == '-':
-                            continue
-                        self.extract_variable_region(prefix, method, x, y, sample)
-                        # self.write_bed_files(prefix, method, region, self.arg.annotation, append)
-                        append = True
+                    if len(self.arg.bed) > 0:
+                        with open(self.arg.bed+'_'+method+'.bed', 'w') as f:
+                            while True:
+                                x, y = data[0].__next__(), data[1].__next__()
+                                assert x[0] == y[0]
+                                if x[0][-1] == '-':
+                                    continue
+                                for line in self.write_bed_files(prefix, method, x, y, sample, thres):
+                                    f.write(line)
+                    else:
+                        while True:
+                            x, y = data[0].__next__(), data[1].__next__()
+                            assert x[0] == y[0]
+                            if x[0][-1] == '-':
+                                continue
+                            self.extract_variable_region(prefix, method, x, y, sample)
                 except StopIteration:
                     pass
                 else:

@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 from param_fit_hmm import *
@@ -23,9 +24,12 @@ def get_parser():
     parser.add_argument("--fix_mu", dest="fix_mu", action="store_true", help="Fix mu, no optimization.", required=False)
     parser.add_argument("--fix_sigma", dest="fix_sigma", action="store_true", help="Fix sigma, no optimization.", required=False)
     parser.add_argument("--fix_trans", dest="fix_trans", action="store_true", help="Fix transition matrix, no optimization.", required=False)
+    parser.add_argument("--print_keys", dest="print_keys", action="store_true", help="Only print keys to be computed.", required=False)
+    parser.add_argument("--key_file", nargs='+', dest="key_files", help="Read key files.", required=False)
     parser.add_argument("--param", dest="param_file", type=str, help="Example: '[[1.0, 1.0, 0.9, 0.5], [1.0, 1.0, 0.9, 0.5]]'", required=False)
-    parser.add_argument("--multi", dest="multi", action="store_true", help="For more than two replicates (but slow).", required=False)
+    # parser.add_argument("--multi", dest="multi", action="store_true", help="For more than two replicates (but slow).", required=False)
     parser.add_argument("--core", dest="core", type=int, help="Multi core processes for speed up.", required=False)
+    # parser.add_argument('--independent', nargs='?', const=1, type=int, help="Compute HMM for each [number] transcript independently (avoid overflow).", default=-1, required=False)
     parser.add_argument("--independent", dest="inde", action="store_true", help="Compute HMM for each transcript independently (avoid overflow).", required=False)
     parser.add_argument("--time", dest="time", type=int, help="Iteration time for training.", required=False)
     parser.add_argument("--output", dest="output", type=str, help="output filename", required=False, default="idr_output.csv")
@@ -35,14 +39,34 @@ def get_parser():
                                                                                 "This option also enables replacement of case and cont in output csv so that case in output always shows an enrichment of accessible region.", required=False)
     parser.add_argument("--DMS", dest="DMS", type=str, help="Use fasta file to exclude G and T (U) nucleotides from stem or accessible class due to no information.", required=False, default="")
     parser.add_argument("--threshold", dest="threshold", type=float, help="Remove transcripts whose average score is lower than a threshold.", default=float('nan'), required=False)
-    parser.set_defaults(grid=False, test=False, fix_trans=False, param_file=None, control=[], ratio=False, debug=False, core=1, time=10, reverse=False)
+    parser.set_defaults(grid=False, test=False, fix_trans=False, param_file=None, control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
     return parser
 
+def test_each_set(para, *args):
+    para.test_hmm_EMP(*args)
+
+def read_keys(files, verbose=True):
+    seta = []
+    for fname in files:
+        if len(fname) == 0: continue
+        if not os.path.isfile(fname):
+            if verbose: print("Cannot find", fname)
+            continue
+        with open(fname) as f:
+            seta += [line.lstrip('>').rstrip('\n') for line in f.readlines() if line != '' and line[0] != '#']
+    target = []
+    for key in set([key.rstrip('+').rstrip('-') for key in seta]):
+        target.append(key+"+")
+        target.append(key+"-")
+    if verbose:
+        print("# Read key files", files, "->", len(target))
+    return target
 
 class IDRHmm:
     """docstring for IDRhmm"""
     def __init__(self, arg):
         self.input = [arg.case, arg.control]
+        self.key_files = arg.key_files
         self.noHMM = arg.noHMM
         # self.coverage = arg.coverage
         self.sample_size = arg.sample_size
@@ -51,7 +75,6 @@ class IDRHmm:
         self.test = arg.test
         self.output = arg.output
         self.ref = arg.ref
-        self.multi = arg.multi
         self.train = arg.train
         self.DMS = arg.DMS
         self.arg = arg
@@ -77,12 +100,33 @@ class IDRHmm:
         else:
             pass
 
+    # def distributed_testing(self):
+    #     data = self.get_data()
+    #     self.set_prefix_output()
+        # pool = Pool(self.sample)
+        # paras = [ParamFitHMM(hclass, read_data_pars_format_multi(self.input, key), -1, self.params, self.arg.debug, self.output+"_"+str(i), \
+        #                     self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
+        #                     core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde) for i, key in enumerate(key_list)]
+        # result = pool.starmap(test_each_set, [(para, grid, -1, self.arg.param_file, self.arg.fix_trans, self.arg.fix_mu, self.arg.fix_sigma) for para in paras])
+        # pool.close()
+
+    def get_print_keys(self):
+        target = read_only_keys_of_high_expression_pars_multi(self.input, self.arg.threshold)
+        print('\n'.join(target))
+
+    def get_data(self):
+        seta = None
+        if len(self.key_files) > 0:
+            seta = read_keys(self.key_files)
+        if self.arg.threshold == self.arg.threshold:
+            data = read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, seta)
+        else:
+            data = read_data_pars_format_multi(self.input, True, seta)
+        return data
+
     def infer_reactive_sites(self):
         hclass = self.set_hclass()
-        if self.arg.threshold == self.arg.threshold:
-            data = read_only_high_expression_pars_multi(self.input, self.arg.threshold)
-        else:
-            data = read_data_pars_format_multi(self.input)
+        data = self.get_data()
         self.set_prefix_output()
         self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                 self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
@@ -107,4 +151,7 @@ if __name__ == '__main__':
     parser = get_parser()
     options = parser.parse_args()
     hmm = IDRHmm(options)
-    hmm.infer_reactive_sites()
+    if options.print_keys:
+        hmm.get_print_keys()
+    else:
+        hmm.infer_reactive_sites()

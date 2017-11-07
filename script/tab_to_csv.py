@@ -57,6 +57,7 @@ def comp_threshold(score, prefix, top):
     temp = sorted([x for x in [none_float(x) for x in score] if x == x])
     if "IDR" in prefix:
         temp = [1.-float(s) for s in temp]
+
     if top == 0:
         return np.nanmin(temp)-1.
     th = temp[max(0, math.floor(float(top)/(100.)*len(temp))-1)]

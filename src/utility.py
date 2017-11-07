@@ -134,9 +134,30 @@ def print_score_data(fname, dicts):
                 f.write(get_print_str_score(tdict[key]))
             f.write('\n')
 
-def read_only_high_expression_pars_multi(fnames, threshold, verbose=True):
+def read_only_keys_of_high_expression_pars_multi(fnames, threshold, verbose=True):
+    target = []
+    for index in range(len(fnames)):
+        print("# Reading ", fnames[index])
+        count, rcount = 0, 0
+        if len(fnames[index]) == 0:
+            continue
+        for key, tdata in parse_score_tri_iterator(fnames[index]):
+            count += 1
+            if count%1000 == 0 and verbose:
+                print("# Reading lines (%d/%d lines)..." % (rcount, count))
+                sys.stdout.flush()
+            if key not in target:
+                rm_flag = all([len([True for x in t if x > 0.]) < threshold for t in tdata])
+                if rm_flag: continue
+                target.append(key)
+            rcount += 1
+    return list(set(target))
+
+def read_only_high_expression_pars_multi(fnames, threshold, verbose=True, seta=None):
     data = []
     target = []
+    if seta is not None:
+        target = seta
     for index in range(len(fnames)):
         print("# Reading ", fnames[index])
         count, rcount = 0, 0
@@ -151,17 +172,18 @@ def read_only_high_expression_pars_multi(fnames, threshold, verbose=True):
             if len(data[index]) == 0:
                 data[index] = [{chr(0):[0]} for t in tdata]
             if key not in target:
+                if seta is not None:    continue
                 # rm_flag = (len([True for t in tdata if np.nanmax(t) >= threshold]) == 0)
                 rm_flag = all([len([True for x in t if x > 0.]) < threshold for t in tdata])
                 if rm_flag: continue
-            if index == 0:
-                target.append(key)
+                if index == 0:
+                    target.append(key)
             for i, temp in enumerate(tdata):
                 data[index][i][key] = temp
             rcount += 1
     return data
 
-def read_data_pars_format_multi(fnames, verbose=True):
+def read_data_pars_format_multi(fnames, verbose=True, seta=None):
     data = []
     count = 0
     for index in range(len(fnames)):
@@ -172,6 +194,8 @@ def read_data_pars_format_multi(fnames, verbose=True):
             count += 1
             if count%1000 == 0 and verbose:
                 print("# Reading lines (%s lines)..." % count)
+            if seta is not None and key not in seta:
+                continue
             if len(data[index]) == 0:
                 data[index] = [{chr(0):[0]} for t in tdata]
             for i, temp in enumerate(tdata):

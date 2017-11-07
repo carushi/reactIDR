@@ -26,6 +26,7 @@ def dot_blacket_to_float(c): # structure 0 acc - 1 canonical, -1 unmappable, -2 
     elif c == "-":   return -1.0
     else:   return 0.5
 
+
 def seq_to_float(c):
     if c == 'A' or c == 'a':
         return 0
@@ -450,7 +451,7 @@ class ParamFitHMM:
     def write_idr_value_to_file(self):
         for i in range(len(self.v)):
             param = self.get_IDR_params(i)
-            localIDRs, IDR = get_idr_value_23dim(param, *self.v[i])
+            localIDRs, IDR = get_idr_value_23dim(param, self.core, *self.v[i])
             self.print_dataset_for_each_sample(i, IDR, "IDR")
 
     def write_count_value_to_file(self, data):
@@ -590,7 +591,6 @@ class ParamFitHMM:
     def write_first_result(self):
         self.write_reference_to_file()
         self.write_idr_value_to_file()
-<<<<<<< HEAD
 
     def parameter_optimization_iter(self, index, space, fix_mu=False, fix_sigma=False, fix_trans=False):
         if not fix_trans:
@@ -673,90 +673,6 @@ class ParamFitHMM:
         if N < 0:   return
         lhd = self.apply_forward_backward()
         if self.verbose:
-=======
-
-    def parameter_optimization_iter(self, index, space, fix_mu=False, fix_sigma=False, fix_trans=False):
-        if not fix_trans:
-            self.set_new_transition(str(index))
-            self.set_new_p(first=(index == 0))
-        lhd = self.apply_forward_backward()
-        if self.verbose:
-            print('(%d time) new lhd ->\t%f' % (index, lhd), end='\t')
-            print(index, -1, self.get_IDR_params(), end='\t', sep='\t')
-            print_mat_one_line(self.transition_param, '\n')
-            # print('alpha->', 10**space[index], sep="\t")
-        break_flag = self.EM_iteration_grad(index, lhd, fix_mu, fix_sigma, 10**space[index])
-        # break_flag = self.EM_iteration_numeric(i, lhd, fix_mu, fix_sigma, space[i]) # Numerical differentiation.
-        return lhd, break_flag
-
-    def allocate_seq_based_hclass(self, ref, hidden):
-        struct_dict = get_struct_dict(ref, seq_to_float)
-        if hidden is None:
-            if self.hclass == 3:
-                hidden = convert_to_hidden_dict(struct_dict, lambda x: -1 if (x == 0 or x == 1) else 0)
-            else:
-                hidden = convert_to_hidden_dict(struct_dict, lambda x: 1 if (x == 0 or x == 1) else 0)
-        else:
-            hidden_seq = convert_to_hidden_dict(struct_dict, lambda x: 1 if (x == 0 or x == 1) else 0)
-            print(hidden_seq)
-            for x in hidden:
-                if x not in hidden_seq: hidden.pop(x)
-                else:
-                    hidden[x] = [int(i*j) for i, j in zip(hidden[x], hidden_seq[x])]
-        return hidden
-
-    def allocate_struct_based_hclass(self, ref, reverse):
-        struct_dict = get_struct_dict(ref, dot_blacket_to_float)
-        if self.hclass == 3:
-            hidden = convert_to_hidden_dict(struct_dict, lambda x: 2 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
-            if reverse:
-                hidden = [[0, 2, 1, -1][x] for x in hidden]
-        else:
-            if reverse:
-                hidden = convert_to_hidden_dict(struct_dict, lambda x: 1 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 0)
-            else:
-                hidden = convert_to_hidden_dict(struct_dict, lambda x: 0 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
-        return hidden
-
-    def train_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
-        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans, param_file)
-
-    def test_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
-        if param_file is not None:
-            self.read_params(param_file)
-        self.estimate_hmm_based_IDR(grid, 0, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
-
-    def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
-        self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
-        self.estimate_hmm_based_IDR(grid, N=-1, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans)
-
-    def estimate_hmm_based_IDR_debug(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False):
-        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans, debug=True)
-
-    def print_time(self, head):
-        if self.time is None:
-            self.time = [time.time(), time.clock()]
-            print("Time check:", head, self.time[0], self.time[1], '(process,time,clock)')
-        else:
-            current_time = time.time()
-            current_clock = time.clock()
-            print("Time check:", head, current_time - self.time[0], current_clock-self.time[1], '(process,time,clock)')
-            self.time = [current_time, current_clock]
-            if head == 'global' or head == 'last_iter':
-                print("Memory check:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "(bytes)")
-
-    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None, debug=False, test=False):
-        """ N=-1: no forward-backward (IDR computation). N=0 -> forward-backward once with trained parameters."""
-        self.print_time('start')
-        self.print_setting("IDR-HMM", N, grid, fix_mu, fix_sigma)
-        if N > 0 and grid:
-            self.set_init_theta(grid, fix_mu=fix_mu, fix_sigma=fix_sigma)
-        self.write_first_result()
-        self.print_time('global')
-        if N < 0:   return
-        lhd = self.apply_forward_backward()
-        if self.verbose:
->>>>>>> updated
             print('--------')
             print('(initial) new lhd ->\t%f ' % (lhd), end='\t')
             print(0, -1, self.get_IDR_params(), end=' ', sep='\t')

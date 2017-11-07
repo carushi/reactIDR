@@ -514,9 +514,11 @@ class HMM:
         for i in range(1, self.length):
             for h in (range(self.hclass) if i not in self.stop_sites else [0]):
                 self.fb.forward[i, h] = forward(i, h, range(self.hclass))
+            if i%10000 == 0:    print('# HMM forward', i)
         for i in range(self.length-2, -1, -1): # transition_param is used as transposed.
             for h in (range(self.hclass) if i not in self.stop_sites else [0]):
                 self.fb.backward[i, h] = backward(i, h, range(self.hclass))
+            if i%10000 == 0:    print('# HMM backward', i)
         self.check_partition_funciton()
         self.set_responsibility_independent()
         if self.verbose:

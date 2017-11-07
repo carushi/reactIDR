@@ -55,7 +55,51 @@ def set_positive_negative(answer, sp):
 #     auc = metrics.auc(fpr, tpr)
 #     return tpr, fpr, auc
 
+
+def compute_2d_roc(answer, pred_case, pred_cont, pos):
+    tup = [(pred_case[i] if pred_case[i] == pred_case[i] else -1., pred_cont[i] if pred_cont[i] == pred_cont[i] else -1., answer[i]) for i in range(len(answer)) if answer[i] >= 0.0]
+    print(tup)
+    print([float(np.nanmax([x[0], x[1]])) for x in tup])
+    tup = sorted(tup, key=lambda x: float(np.nanmax([x[0], x[1]])), reverse=True)
+    p = len([x for x in tup if int(x[2]) == pos])
+    n = len(tup)-p
+    fpr, tpr = [0], [0]
+    fp, tp, fn, tn = 0, 0, p, n
+    pred = [1]*len(tup)
+    for i, (x, y, z) in enumerate(tup):
+        pred[i] = 0 if x >= y else 1 if x < y else 0
+        # nfp = len([x for x, y in zip(pred[0:i+1], answer[0:i+1]) if x == 0. and y == 1.])
+        # ntp = len([x for x, y in zip(pred[0:i+1], answer[0:i+1]) if x == 0. and y == 0.])
+        if pred[i] == 0:
+            if answer[i] == 0:
+                tp += 1
+                fn -= 1
+            else:
+                fp += 1
+                tn -= 1
+        else:
+            pass
+        fpr.append(float(fp)/(fp+tn))
+        tpr.append(float(tp)/(tp+fn))
+    fpr.append(1)
+    tpr.append(1)
+    print(tpr, fpr)
+    return tpr, fpr
+
+def calc_tp_fp_2d(answer, pred, pos, verbose=True, narm=True, negative=False, assym=False):
+    pred_case = pred[0]
+    pred_cont = pred[1]
+    assert len(pred_case) == len(answer) and len(pred_cont) == len(answer)
+    fpr, tpr = compute_2d_roc(np.array(answer), pred_case, pred_cont, pos)
+    if len(fpr) >= 2:
+        auc = metrics.auc(np.array(fpr), np.array(tpr))
+    else:
+        auc = float('nan')
+    return tpr, fpr, auc
+
+
 def calc_tp_fp(answer, pred, pos, verbose=True, narm=True, negative=False, assym=False):
+    # print(len(pred), len(answer), file=sys.stderr)
     assert len(pred) == len(answer)
     if assym:
         converted_p, answer = pred_conversion_assym(pred, narm, negative, pos, answer)
@@ -74,8 +118,6 @@ def pred_conversion(pred, narm, negative, pos, answer):
     if negative:
         converted = [-x for x in converted]
     if narm:
-        # answer = [answer[i] for i in range(len(answer)) if pred[i] == pred[i]]
-        # pred = [pred[i] for i in range(len(pred)) if pred[i] == pred[i]]
         inf = ("-1e20" if pos == int(0) else "1e20")
         converted = [x if x == x else float(inf) for x in converted]
     converted = [x*STEP for x in converted]
@@ -86,7 +128,7 @@ def pred_conversion_assym(pred, narm, negative, pos, answer):
     if negative:
         converted = [-x for x in converted]
     if narm:
-        inf = min(min([x for x in converted if x == x])-1, -1e5)
+        inf = min((min([x for x in converted if x == x])-1, -1e5))
         converted = [x if x == x else float(inf) for x in converted]
     return converted, answer
 
@@ -115,6 +157,7 @@ def filter_ambig_answer(pos, score, IDR_case, IDR_cont, th_case, th_cont, acc=Tr
             return [pos if score[i] == pos and IDR_case[i] >= th_case and IDR_cont[i] < th_cont else 1-pos for i in range(len(score))]
         else:
             return [pos if score[i] == pos and IDR_case[i] < th_case and IDR_cont[i] >= th_cont else 1-pos for i in range(len(score))]
+
 
 def compute_ratio(IDR_case, IDR_cont, IDR=True, acc=True):
     if IDR:

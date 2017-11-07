@@ -1,13 +1,9 @@
 import sys
-<<<<<<< HEAD
-import utility
-import numpy as np
-=======
 import os
 import utility
+from multiprocessing import Pool
 import numpy as np
 from scipy.optimize import fminbound
->>>>>>> updated
 from scipy.stats import rankdata
 import matplotlib.pyplot as plt
 from prob_optimize import *
@@ -38,30 +34,37 @@ def only_build_rank_vector_23dim(reps):
     return tuple([np.array(rank_vector(rep), dtype=np.int) for rep in reps])
 
 
-def calc_IDR_23dim(r1, r2, r3, theta):
-    mu, sigma, rho, p = theta
-    data = [hmm_compute_pseudo_values(r, mu, sigma, p) if r is not None else None for r in [r1, r2, r3]]
-    localIDR = 1-calc_post_membership_prbs_23dim(*data, theta=theta)
-    if idr.FILTER_PEAKS_BELOW_NOISE_MEAN:
-        if r3 is not None:
-            localIDR[data[0] + data[1] + data[2] < 0] = 1
+def comp_pseudo_multi_core(array, param, thread):
+    pool = Pool(thread)
+    pseudo = pool.starmap(hmm_compute_pseudo_values, [(x, param[0], param[1], param[3]) for x in array if x is not None])
+    answer = []
+    for x in array:
+        if x is None:
+            answer.append(None)
         else:
-            localIDR[data[0] + data[1] < 0] = 1
-    # it doesn't make sense for the IDR values to be smaller than the
-    # optimization tolerance
-    localIDR = np.clip(localIDR, idr.CONVERGENCE_EPS_DEFAULT, 1)
+            answer.append(pseudo.pop(0))
+    pool.close()
+    return answer
+
+def calc_IDR_23dim(r1, r2, r3, theta, thread=1):
+    mu, sigma, rho, p = theta
+    data = comp_pseudo_multi_core([r1, r2, r3], theta, thread)
+    # data = [hmm_compute_pseudo_values(r, mu, sigma, p) if r is not None else None for r in [r1, r2, r3]]
+    localIDR = 1.-calc_post_membership_prbs_23dim(*data, theta=theta)
+    if r3 is not None:
+        localIDR[data[0] + data[1] + data[2] < 0] = 1
+    else:
+        localIDR[data[0] + data[1] < 0] = 1
+    localIDR = np.clip(localIDR, CONVERGENCE_EPS_DEFAULT, 1)
     local_idr_order = localIDR.argsort()
     ordered_local_idr = localIDR[local_idr_order]
     ordered_local_idr_ranks = rankdata(ordered_local_idr, method='max')
-    IDR = []
-    for i, rank in enumerate(ordered_local_idr_ranks):
-        IDR.append(ordered_local_idr[:rank].mean())
+    IDR = [ ordered_local_idr[:rank].mean() for i, rank in enumerate(ordered_local_idr_ranks) ]
     IDR = np.array(IDR)[local_idr_order.argsort()]
-
     return localIDR, IDR
 
-def get_idr_value_23dim(theta, r1, r2, r3=None):
-    localIDRs, IDR = calc_IDR_23dim(r1, r2, r3, np.array(theta))
+def get_idr_value_23dim(theta, thread, r1, r2, r3=None):
+    localIDRs, IDR = calc_IDR_23dim(r1, r2, r3, np.array(theta), max(1, thread))
     return localIDRs, IDR
 
 
@@ -85,9 +88,9 @@ def remove_no_data(s1, s2, idr):
     return s1, s2, idr
 
 try:
-    import idr
-    from idr.optimization import compute_pseudo_values, EM_iteration, CA_iteration, log_lhd_loss, grid_search
-    print('Import idr succeded.', file=sys.stderr)
+    #import idr
+    #from idr.optimization import EM_iteration, CA_iteration, grid_search
+    #print('Import idr succeded.', file=sys.stderr)
 
     def CA_step_23dim(z1, z2, z3, theta, index, min_val, max_val):
         inner_theta = theta.copy()
@@ -224,9 +227,9 @@ try:
         return theta, loss
 
 
-    def fit_copula_parameters(xvar, mu=1, sigma=0.3, rho=idr.DEFAULT_RHO, p=idr.DEFAULT_MIX_PARAM,
-                                max_iter=idr.MAX_ITER_DEFAULT,
-                                convergence_eps=idr.CONVERGENCE_EPS_DEFAULT,
+    def fit_copula_parameters(xvar, mu=1, sigma=0.3, rho=DEFAULT_RHO, p=DEFAULT_MIX_PARAM,
+                                max_iter=MAX_ITER_DEFAULT,
+                                convergence_eps=CONVERGENCE_EPS_DEFAULT,
                                 image=False, header="",
                                 fix_mu=False, fix_sigma=False, grid=False):
         starting_point = (mu, sigma, rh, p)

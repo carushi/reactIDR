@@ -8,6 +8,9 @@ import matplotlib.cm as cm
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patches as mpatches
 from scipy.stats import rankdata, kde
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn import svm
+from sklearn.model_selection import cross_val_score
 # import seaborn as sns
 # from seaborn import JointGrid
 import seaborn.apionly as sns
@@ -17,6 +20,11 @@ import copy
 from AUC import *
 from collections import Counter
 import argparse
+
+REMOVE = True
+def scale_vector(vec):
+    max_vec, min_vec = np.nanmax(vec), np.nanmin(vec)
+    return [float(x-min_vec)/(max_vec-min_vec) if x == x else float('nan') for x in vec ]
 
 def parse_score_tri_iterator(file, header=True):
     with open(file) as f:
@@ -53,6 +61,15 @@ def moving_average(a, n=3) :
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 
+def remove_nan(X, Y):
+    index = [i for i in range(len(Y)) if len([ j for j in range(X.shape[0]) if not np.isnan(X[j,i])]) == X.shape[0]]
+    X = [[x[i] for i in index] for x in X]
+    Y = [Y[i] for i in index]
+    # else:
+    #     print(X)
+    #     X, Y = list([(x, y) for x, y in zip(X, Y) if not np.isnan(x)])
+    return X, Y
+
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", nargs='+', type=str, help="input csv", metavar="INPUT")
@@ -62,14 +79,15 @@ def get_parser():
     # parser.add_argument("--filter", dest="filter", action="store_true", help="Compute AUC with filtering dataset according to IDR.", required=False)
     parser.add_argument("--auc", dest="auc", action="store_true", help="Compute AUC.", required=False)
     parser.add_argument("--covauc", dest="covauc", action="store_true", help="Compute AUC with coverage-based filtering.", required=False)
-    parser.add_argument("--score", dest="score_file", type=str, help="Score file such as global PARS, icshape score (should include 'pars' or 'icshape' in the name)", required=False)
+    parser.add_argument("--mauc", dest="mauc", action="store_true", help="Compute AUC with reactivities from multiple dataset.", required=False)
+    parser.add_argument("--score", dest="score_file", nargs='+', type=str, help="Score file such as global PARS, icshape score (should include 'pars' or 'icshape' in the name)", required=False)
     parser.add_argument("--scatter", dest="scatter", action="store_true", help="Draw scatter plot.", required=False)
     parser.add_argument("--dscatter", dest="dscatter", action="store_true", help="Draw scatter plot.", required=False)
     parser.add_argument("--annotation", dest="annotation", type=str, help="GTF file to output bed files", required=False)
     parser.add_argument("--case", dest="case", type=str, help="Count file for case.", required=False)
     parser.add_argument("--cont", dest="cont", type=str, help="Count file for cont.", required=False)
     parser.add_argument("--dir", dest="dir", type=str, help="Directory for count data.", required=False)
-    parser.set_defaults(score_file="", case="", cont="", dir="", annotation="", covauc=False)
+    parser.set_defaults(score_file=[], case="", cont="", dir="", annotation="", covauc=False, mauc=False)
     return parser
 
 def heatmap_routine(df, row_labels, fname):
@@ -128,8 +146,10 @@ def append_integrated_transcript(lines, skip, seta=None, minus_strand=False, bou
                     concat_data.extend(tlines[index[0]][skip:])
                     if boundary:
                         concat_data.extend([float("-inf")])
+                # print(score_type, sample, len(concat_data))
                 if len(concat_data) > 0:
                     all_concat.append([score_type, name, sample]+concat_data)
+    # print([len(x) for x in all_concat], all_concat)
     return trans_list, all_concat
 
 def append_integrated_transcript_count(lines, skip, seta=None, boundary=False):
@@ -155,11 +175,11 @@ class AccEval:
         # return (self.sep).join(map(str, score))
 
 
-    def append_simple_score(self): # reading converted scores
+    def append_simple_score(self, index=0): # reading converted scores
         lines = []
         if self.arg.score_file is None or len(self.arg.score_file) == 0:
             return lines
-        with open(self.arg.score_file) as f:
+        with open(self.arg.score_file[index]) as f:
             pars_flag = ("pars" in self.arg.score_file)
             head = ["cont", "case"]
             for line in f.readlines():
@@ -174,35 +194,40 @@ class AccEval:
         index = [i for i, contents in enumerate(tlines) if contents[0] in primary_type]
         return index
 
-    def get_lines(self):
-        lines, prefix, both = get_lines(self.arg.input[0], self.skip, self.sep)
+    def get_lines(self, index=0):
+        lines, prefix, both = get_lines(self.arg.input[index], self.skip, self.sep)
         if both:    self.comp_sample = both
         if len([contents[0] for contents in lines if contents[0] == 'score']) == 0:
-            lines.extend(self.append_simple_score())
+            lines.extend(self.append_simple_score(index))
         return lines, prefix
 
     def plot_heatmap(self):
-        lines, prefix = self.get_lines()
-        if self.arg.auc or self.arg.covauc:
-            trans_list, alines = append_integrated_transcript(lines, self.skip, ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"])
-            lines += alines
-            if self.arg.covauc:
-                clines = self.append_count_score(self.arg.case, self.arg.cont)
-                clines += append_integrated_transcript_count(clines, self.skip, trans_list)[1]
+        if self.arg.mauc:
+            results = [self.get_lines(i) for i in range(len(self.arg.input))]
+            for i, (lines, prefix) in enumerate(results):
+                trans_list, alines = append_integrated_transcript(lines, self.skip, ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"])
+                results[i] = (lines+alines, prefix)
+            lines, prefix = results[0][0], results[0][1]
+            print(prefix, lines)
+        else:
+            lines, prefix = self.get_lines()
+            if self.arg.auc or self.arg.covauc:
+                trans_list, alines = append_integrated_transcript(lines, self.skip, ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"])
+                lines += alines
+                if self.arg.covauc:
+                    clines = self.append_count_score(self.arg.case, self.arg.cont)
+                    clines += append_integrated_transcript_count(clines, self.skip, trans_list)[1]
         for trans in list(set([contents[1] for contents in lines])):
             fprefix = prefix+"_"+trans
-            data = [contents for contents in lines if contents[1] == trans]
-            if trans != 'all_unknown':
-                continue
             print(trans)
-            print(len(data))
+            if trans != 'all_unknown' and trans != 'RNA18S5+':
+                continue
+            data = [contents for contents in lines if contents[1] == trans]
             if len(data) == 0:
                 continue
-            print(trans)
             dict_count = get_sample_dict(data, self.skip)
             if 'type' not in dict_count[0]:
                 continue
-            print(dict_count[0].keys())
             if self.arg.dscatter:
                 self.plot_double_scatter(trans, dict_count, fprefix)
             elif self.arg.auc:
@@ -210,6 +235,10 @@ class AccEval:
             elif self.arg.covauc:
                 cdata = [contents for contents in clines if contents[1] == trans]
                 self.comp_cov_auc(trans, dict_count, fprefix, cdata)
+            elif self.arg.mauc:
+                if trans == 'all_unknown':
+                    cdata = [get_sample_dict([contents for contents in clines if contents[1] == trans], self.skip) for clines, prefix in results]
+                    self.comp_multi_auc(trans, fprefix, cdata, [prefix for clines, prefix in results])
             else:
                 self.plot_single_heatmap(trans, dict_count, fprefix)
                 if self.comp_sample:
@@ -372,44 +401,47 @@ class AccEval:
                 loc = 4
             else:
                 loc = 3
-        for method in ["recall", "cutoff"]:
-            for sp in ["all", "canonical"]:
-                answer = set_positive_negative(dict_count[0]['ref'], sp)
-                for i, sample in enumerate(["case", "cont"]):
-                    for assym in [True, False]:
-                        if assym and sample == "case":  continue
-                        if top:
-                            fig = plt.figure(1)
-                            fig.set_size_inches((6, 9))
-                        else:
-                            fig = plt.figure(1)
-                            fig.set_size_inches((8, 6))
-                        fprefix = prefix+"_"+sp+sample+("_assym" if assym else "")
-                        ymin = 1
-                        for score_type in ["count", "score", "IDR-HMM-final", "noHMMIDR", "BUMHMM", 'PROBer']:
-                            if score_type not in dict_count[i]:
-                                print("No data!", score_type, file=sys.stderr)
-                                continue
-                            pos = self.get_pos(sample, score_type)
-                            pred = [one_minus_nan_float(val) if "IDR" in score_type else nan_float(val) for val in dict_count[i][score_type]]
-                            if score_type == 'noHMMIDR':
-                                print(set(pred))
-                            if curve == "auc":
-                                tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
-                                xlab, ylab = "1-Specificity", "Sensitivity"
-
-                            self.check_print_debug(fprefix, score_type, pred, pred, answer)
-                            fig, tymin = self.compute_and_plot_curves(pos, answer, pred, score_type, fprefix, sample, curve, top, fig, assym)
-                            ymin = min(ymin, tymin)
-                        if top:
-                            fig.add_subplot(111).set_ylim([max(-0.01, ymin-0.1), 1.01])
-                            fig.add_subplot(111).set_xlim([-0.001, 0.1])
-                        else:
-                            fig.add_subplot(111).set_ylim([-0.01, 1.01])
-                            fig.add_subplot(111).set_xlim([-0.01, 1.01])
-                        fig.add_subplot(111).legend(loc=loc, numpoints=1)
-                        fig.savefig(fprefix+"_"+curve+"_idr.pdf")
-                        fig.clf()
+        for sp in ["all", "canonical"]:
+            if sp == 'canonical':
+                break
+            answer = set_positive_negative(dict_count[0]['ref'], sp)
+            for i, sample in enumerate(["case", "cont"]):
+                for assym in [True, False]:
+                    if assym and sample == "case":  continue
+                    if top:
+                        fig = plt.figure(1)
+                        fig.set_size_inches((6, 9))
+                    else:
+                        fig = plt.figure(1)
+                        fig.set_size_inches((8, 6))
+                    fprefix = prefix+"_"+sp+sample+("_assym" if assym else "")
+                    ymin = 1
+                    for score_type in ["count", "score", "IDR-HMM-final", "noHMMIDR", "BUMHMM", 'PROBer']:
+                        if score_type not in dict_count[i]:
+                            print("No data!", score_type, file=sys.stderr)
+                            continue
+                        pos = self.get_pos(sample, score_type)
+                        pred = [one_minus_nan_float(val) if "IDR" in score_type else nan_float(val) for val in dict_count[i][score_type]]
+                        # if method == 'score_type == 'noHMMIDR':
+                        if 'all_unknown' in prefix and curve == 'auc' and (assym or sample == "case"):
+                            tpred, tanswer = pred_conversion_assym(pred, True, False, pos, answer)
+                            print("pred", score_type, sample, pos, ","+",".join(map(str, tpred)))
+                            print("answer", score_type, sample, pos, ","+",".join(map(str, tanswer)))
+                        if curve == "auc":
+                            tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
+                            xlab, ylab = "1-Specificity", "Sensitivity"
+                        self.check_print_debug(fprefix, score_type, pred, pred, answer)
+                        fig, tymin = self.compute_and_plot_curves(pos, answer, pred, score_type, fprefix, sample, curve, top, fig, assym)
+                        ymin = min(ymin, tymin)
+                    if top:
+                        fig.add_subplot(111).set_ylim([max(-0.01, ymin-0.1), 1.01])
+                        fig.add_subplot(111).set_xlim([-0.001, 0.1])
+                    else:
+                        fig.add_subplot(111).set_ylim([-0.01, 1.01])
+                        fig.add_subplot(111).set_xlim([-0.01, 1.01])
+                    fig.add_subplot(111).legend(loc=loc, numpoints=1)
+                    fig.savefig(fprefix+"_"+curve+"_idr.pdf")
+                    fig.clf()
 
 
     def calc_ratio_auc(self, dict_count, prefix):
@@ -472,7 +504,7 @@ class AccEval:
 
     def calc_filtered_auc(self, dict_count, prefix, sp, sample, coverage, curve):
         index = {'case':0, 'cont':1}[sample]
-        step = 5
+        step = 10
         prange = range(0, 100, step)
         answer = set_positive_negative(dict_count[0]['ref'], sp)
         coverage_sorted = sorted(coverage)
@@ -501,6 +533,7 @@ class AccEval:
                     tpr, fpr, auc = calc_tp_fp(fanswer, fpred, pos, assym=assym)
                     print('fauc', filter_type, prefix, sp, sample, score_type, len(fpred), i*step, thres, auc)
 
+
     def plot_all_auc(self, tname, dict_count, prefix):
         if 'ref' in dict_count[0]:
             print(dict_count[0].keys())
@@ -522,6 +555,186 @@ class AccEval:
                 coverage = np.sum([list(map(nan_float, x[3:])) for x in cdata if x[2] == sample], axis=0)
                 self.calc_filtered_auc(dict_count, prefix, sp, sample, coverage, curve='auc')
 
+    def comp_multi_auc(self, tname, prefix, dict_list, prefix_list):
+        if 'ref' not in dict_list[0][0]:
+            return
+        sp, curve ='all', 'auc'
+        index = {'case':0, 'cont':1}
+        original_sample_list = ['cont' if 'pars' in p else 'case' for p in prefix_list]
+        sample = 'case'
+        criteria = '_2d'
+        answer = set_positive_negative(dict_list[0][0]['ref'], sp)
+        assym = True
+        for auc_method, func in zip(['max', 'min', 'average', 'no'], [np.max, np.min, np.mean, lambda x: x]):
+            if auc_method != 'no':
+                fig = plt.figure(1)
+                fig.set_size_inches((8, 6))
+            else:
+                break
+            simple = True
+            if criteria == '':  simple = False
+            fprefix = prefix+"_"+sp+sample+("_assym" if assym else "")
+            if simple:
+                fprefix += "_sim"
+            for score_type in ["count", "score", "IDR", "IDR-HMM-final", "noHMMIDR", "BUMHMM", 'PROBer']:
+                if score_type not in dict_list[0][0]:
+                    print("No data!", score_type, file=sys.stderr)
+                    continue
+                if score_type in ["count", "IDR", "IDR-HMM-final"]:
+                    sample_list = original_sample_list
+                else:
+                    sample_list = ['case' for i in range(len(original_sample_list))]
+                pred_list = [ dict_count[index[tsample]][score_type] for dict_count, tsample in zip(dict_list, sample_list) ]
+                header = " ".join([auc_method, prefix, sp, sample, score_type])
+                # print(score_type, len(pred_list), len(sample_list), print(prefix_list))
+                if score_type in ['count', 'score']:
+                    pred_list = [ scale_vector(data) for data in pred_list ]
+                elif "IDR" in score_type:
+                    pred_list = [[one_minus_nan_float(val) for val in data ] for data in pred_list]
+                if auc_method == 'no':
+                    fig2 = plt.figure(1)
+                    ax = fig2.add_subplot(111)
+                    bp = ax.boxplot([[x for x in pred if x == x] for pred in pred_list])
+                    fig2.savefig("boxplot_"+fprefix+"_mauc_"+score_type+"_idr.pdf")
+                    fig2.clf()
+                    continue
+                if auc_method == 'max':
+                    self.multi_dim_classification_lda(answer, pred_list, header)
+                    self.multi_dim_classification_svm(answer, pred_list, header)
+                if '2d' in criteria and len(list(set(sample_list))) > 1:
+                    fig = self.two_dim_evaluation(fig, sample_list, index, answer, pred_list, func, assym, header, score_type, simple)
+                else:
+                    for i, tsample in enumerate(sample_list):
+                        if tsample == 'cont':
+                            pred_list[i] = [one_minus_nan_float(val) for val in pred_list[i]]
+                    fig = self.one_dim_evaluation(fig, sample_list, index, answer, pred_list, func, assym, header, score_type)
+            fig.add_subplot(111).set_ylim([-0.01, 1.01])
+            fig.add_subplot(111).set_xlim([-0.01, 1.01])
+            # fig.add_subplot(111).legend(loc=4, numpoints=1)
+            fig.savefig(fprefix+"_"+curve+"_mauc_"+auc_method+"_idr"+criteria+".pdf")
+            fig.clf()
+
+    def get_feature_vectors(self, pred_list, answer, i):
+        if i < len(pred_list):
+            X = np.array([ pred_list[i] ])
+        else:
+            X = np.array(pred_list)
+        Y = answer[:]
+        return X, Y
+
+    def get_filtered_vectors(self, X, Y, pos, i):
+        global REMOVE
+        X_pred = []
+        if REMOVE:
+            X, Y = remove_nan(X, Y)
+            if i < 3:
+                X_pred, Y = pred_conversion_assym(X[0], True, False, pos, Y)
+                X_pred = np.transpose(np.array([X_pred]))
+        else:
+            if i < 3:
+                X_pred, Y = pred_conversion_assym(X.tolist()[0], True, False, pos, Y)
+                X_pred = np.transpose(np.array([X_pred]))
+            X = X*100.
+            X[np.isnan(X)] = np.nanmin(X)-1.
+            # X[np.isnan(X)] = 0.
+        return X, X_pred, Y
+
+    def multi_dim_classification_lda(self, answer, pred_list, header):
+        for i in range(len(pred_list)+1):
+            pos = 0
+            if ('IDR' in header or 'count' in header) and i == 0:
+                pos = 1
+            X, Y = self.get_feature_vectors(pred_list, answer, i)
+            X, X_pred, Y = self.get_filtered_vectors(X, Y, pos, i)
+            X = np.transpose(X)
+            clf = LinearDiscriminantAnalysis()
+            print(i, len(pred_list))
+            if i < len(pred_list):
+                clf.fit(X_pred, Y)
+                coef = clf.coef_
+                print('score_lda', (self.arg.input+['all'])[i], header, clf.score(X_pred, Y))
+                tpr, fpr, auc = calc_tp_fp(Y, X, True, True, False, True)
+                print('auc_lda', (self.arg.input+['all'])[i], header, X.shape, auc)
+            clf.fit(X, Y)
+            coef = clf.coef_
+            scores = cross_val_score(clf, X, Y, cv=10)
+            print('lda', (self.arg.input+['all'])[i], header, scores.mean(), scores.std(), coef)
+
+
+    def multi_dim_classification_svm(self, answer, pred_list, header):
+        for i in range(len(pred_list)+1):
+            pos = 0
+            if ('IDR' in header or 'count' in header) and i == 0:
+                pos = 1
+            X, Y = self.get_feature_vectors(pred_list, answer, i)
+            X, X_pred, Y = self.get_filtered_vectors(X, Y, pos, i)
+            X = np.transpose(X)
+            clf = svm.SVC()
+            if i < len(pred_list):
+                clf.fit(X_pred, Y)
+                print('score_svm', (self.arg.input+['all'])[i], header, clf.score(X_pred, Y))
+                data = [[X[i, 0] for i in range(X.shape[0]) if Y[i] == 0], [X[i,0] for i in range(X.shape[0]) if Y[i] == 1]]
+                bins=np.linspace(np.min(X), np.max(X), 100)
+                plt.hist(data[0], bins, alpha=0.5, label='loop')
+                plt.hist(data[1], bins, alpha=0.5, label='stem')
+                plt.legend(loc='upper right')
+                plt.savefig('hist_'+header+'_'+str(i)+'.pdf')
+                plt.close()
+                plt.clf()
+            scores = cross_val_score(clf, X, Y, cv=5)
+            print('svm', (self.arg.input+['all'])[i], header, scores.mean(), scores.std())
+            fig = plt.subplots()
+
+
+
+    def two_dim_evaluation(self, fig, sample_list, index, answer, pred_list, func, assym, header, score_type, simple=True):
+        def func_nan(p, func):
+            vec = [x for x in p if x == x]
+            if len(vec) == 0:
+                return float('nan')
+            else:
+                return func(vec)
+        pred = [[], []]
+        for tsample in list(index.keys()):
+            pred[index[tsample]] = [pred_list[i] for i in range(len(pred_list)) if sample_list[i] == tsample]
+            if len(pred[index[tsample]]) == 1:
+                pred[index[tsample]] = pred[index[tsample]][0]
+            else:
+                pred[index[tsample]] = [func_nan(p, func) for p in zip(*[x for x in pred[index[tsample]]])]
+        pos = 0
+        SIMPLE = False
+        if SIMPLE:
+            print('simple 2d')
+            pred_int = [x-y if x == x and y == y else x if x == x else -y for x, y in zip(pred[0], pred[1])]
+            tpr, fpr, auc = calc_tp_fp(answer, pred_int, pos, assym=assym)
+        else:
+            print('2d')
+            tpr, fpr, auc = calc_tp_fp_2d(answer, pred, pos, assym=assym)
+        print('auc', header, len(pred), auc)
+
+        print(tpr, fpr)
+        fig.add_subplot(111).plot(fpr, tpr, 'o', markersize=3, color=self.color[score_type], label=score_type, markeredgewidth=0)
+        return fig
+
+
+    def one_dim_evaluation(self, fig, sample_list, index, answer, pred_list, func, assym, header, score_type):
+        pred_list = pred_list[0:3]
+        pred = []
+        for p in zip(*[x for i, x in enumerate(pred_list)]):
+            vec = [x for x in p if x == x]
+            if len(vec) == 0:
+                pred.append(float('nan'))
+            else:
+                pred.append(func(vec))
+        pos = 0
+        tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
+        print('auc', header, len(pred), auc)
+        xlab, ylab = "1-Specificity", "Sensitivity"
+        fig.add_subplot(111).plot(fpr, tpr, 'o', markersize=3, color=self.color[score_type], label=score_type, markeredgewidth=0)
+        # fig, tymin = self.compute_and_plot_curves(pos, answer, pred, score_type, fprefix, 'case', curve, False, fig, assym)
+        return fig
+
+
     def get_sample_line(self, dict_count, seta):
         keys = list(dict_count[0].keys())+list(dict_count[1].keys())
         tlines = []
@@ -537,7 +750,6 @@ class AccEval:
         if len(row_labels) == 1 and row_labels[0] == 'score':
             return [], []
         return tlines, row_labels
-
 
     def plot_double_heatmap(self, tname, dict_count, prefix):
         fprefix = prefix+"_double"
@@ -691,16 +903,18 @@ class ScatVis:
         print(self.arg)
         rep = ('ctss' not in self.arg.case)
         lines, prefix, both = get_lines(self.arg.input[0], self.skip, self.sep)
-        lines.append(append_integrated_transcript(lines, self.skip, boundary=rep)[1])
-        print('line main')
+        gene_set = ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"]
+        trans_list, alines = append_integrated_transcript(lines, self.skip, seta=gene_set, boundary=rep)
+        lines = lines+alines
         if self.arg.case != "":
             clines = self.append_count_score(self.arg.case, self.arg.cont)
             print('line append count')
-            clines.append(append_integrated_transcript_count(clines, self.skip, ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"], rep)[1])
+            trans_list, alines = append_integrated_transcript_count(clines, self.skip, gene_set, rep)
+            clines += alines
         else:
             return
         for i, sample in enumerate(['case', 'cont']):
-            for trans in list(set([contents[1] for contents in lines])):
+            for trans in list(set(contents[1] for contents in lines)):
                 if 'all_unknown' == trans or trans[-1] == "-":
                     continue
                 fprefix = prefix+"_"+trans
@@ -710,9 +924,10 @@ class ScatVis:
                 dict_count = get_sample_dict(data, self.skip)
                 if len(dict_count[0].keys()) <= 1:  continue
                 rep_count = get_sample_dict(cdata, self.skip)
-                print(rep_count)
+                # print(rep_count)
                 print(trans, rep_count[i].keys())
-                for score_type in ["noHMMIDR", "IDR-HMM-final", "BUMHMM", 'PROBer', "count"]:
+                for score_type in ["noHMMIDR", "IDR-HMM-final", "BUMHMM", 'PROBer', "count", "score"]:
+                # for score_type in ["count"]:
                     if 'all' in trans:
                         if rep:
                             if sample == 'case':
@@ -765,19 +980,41 @@ class ScatVis:
             plt.clf()
             plt.close()
 
-    def add_prof(self, h, j, target, win, prof, break_flag, cont, address, norm):
-        if break_flag or j < 0 or j >= len(target):
-            prof[address].append(float('nan'))
-        else:
-            if target[j] == float('-inf'):
-                break_flag = True
-                prof[address].append(float('nan'))
+    # def add_prof(self, h, j, target, win, prof, break_flag, cont, address, norm):
+    #     if break_flag or j < 0 or j >= len(target):
+    #         prof[address].append(float('nan'))
+    #     else:
+    #         if target[j] == float('-inf'):
+    #             break_flag = True
+    #             prof[address].append(float('nan'))
+    #         else:
+    #             if "raw" in norm:
+    #                 prof[address].append(target[j])
+    #             else:
+    #                 prof[address].append(target[j]/cont)
+    #     return prof, break_flag
+
+    def pop_prof(self, idx, target, win, norm, log=False):
+        def value(pos):
+            if log:
+                return target[pos]/norm
             else:
-                if "raw" in norm:
-                    prof[address].append(target[j])
-                else:
-                    prof[address].append(target[j]/cont)
-        return prof, break_flag
+                return np.log10(1.+target[pos])/np.log10(1.+norm)
+        prof_a, prof_b = [float('nan')]*(win+1), [float('nan')]*(win)
+        cont = target[idx]
+        for h, j in enumerate(range(idx, idx+win+1)):
+            if j < 0 or j >= len(target):
+                break
+            if target[j] == float('-inf'):
+                break
+            prof_a[h] = value(j)
+        for h, j in enumerate(range(idx-1, idx-win-1, -1)):
+            if j < 0 or j >= len(target):
+                break
+            if target[j] == float('-inf'):
+                break
+            prof_b[h] = value(j)
+        return prof_b[::-1]+prof_a
 
     def plot_rep_irep_prof(self, dict_count, rep_count, prefix):
         fprefix = prefix+"_scatter"
@@ -785,13 +1022,16 @@ class ScatVis:
         s2 = [x for x in rep_count["score2"]]
         exp = dict_count
         prob = copy.deepcopy(dict_count)
+        print(dict_count)
+        print(len(s1), len(s2), len(prob))
         norm = "_raw"
         if "IDR" in prefix:
             prob = [one_minus_nan_float(x) for x in prob]
         selected_vec = [prob[i] for i in range(len(prob)) if prob[i] == prob[i]]
         if len(set(selected_vec)) <= 1:
             return
-        tp, bp = 90, 10
+        # tp, bp = 90, 10
+        tp, bp = 90, 50
         top, bottom = np.percentile(selected_vec, tp), np.percentile(selected_vec, bp)
         fig = plt.figure(1)
         fig.set_size_inches((8, 3))
@@ -815,17 +1055,25 @@ class ScatVis:
                 prof.append([])
             for s, target in enumerate([s1, s2]):
                 for idx in index:
-                    if target[idx] < exp_bottom:
+                    if target[idx] != target[idx] or target[idx] < exp_bottom:
                         continue
                     break_flag = False
-                    for h, j in enumerate(range(idx, idx+win+1)):
-                        prof, break_flag = self.add_prof(h, j, target, win, prof, break_flag, target[idx], h+win, norm)
-                    break_flag = False
-                    for h, j in enumerate(range(idx-1, idx-win-1, -1)):
-                        prof, break_flag = self.add_prof(h, j, target, win, prof, break_flag, target[idx], win-h-1, norm)
+                    temp = self.pop_prof(idx, target, win, target[idx])
+                    print(temp)
+                    for i in range(len(temp)):
+                        if temp[i] == temp[i]:
+                            prof[i].append(temp[i])
+                        # else:
+                        #     prof[i].append(0.)
+                    # for h, j in enumerate(range(idx, idx+win+1)):
+                    #     prof, break_flag = self.add_prof(h, j, target, win, prof, break_flag, target[idx], h+win, norm)
+                    # break_flag = False
+                    # for h, j in enumerate(range(idx-1, idx-win-1, -1)):
+                    #     prof, break_flag = self.add_prof(h, j, target, win, prof, break_flag, target[idx], win-h-1, norm)
                 # print(len(prof), [len(prof[i]) for i in range(len(prof))], prof)
                 # print("rep"+str(s), len(prof), prof[win][0:10], prof[win+1][0:10])
             prof_mean = np.nanmean(prof, axis=1)
+            print(prof_mean)
                 # prof_mean = moving_average(prof_mean, 5)
                 # print(prof_mean)
                 # print(len(prof), len(prof_mean), len(range(-win, win+1)))
@@ -1036,6 +1284,7 @@ class ParamVis:
 if __name__ == '__main__':
     parser = get_parser()
     options = parser.parse_args()
+    print(options)
     if len(options.input) == 0:
         os.exit(0)
     if options.parameter:
