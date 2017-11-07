@@ -13,7 +13,7 @@
 	* icSHAPE
 	* DMS-Seq (assumed to be enriched only at A or C)
 * Workflow image
-<img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.pdf" width="500">
+<img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
 
 ## Requirement
 * python3
