@@ -1,57 +1,38 @@
 <img src="https://sites.google.com/site/cawatchm/reactIDR_logo.png" width="280">
 
-* A novel algorithm to classify each nucleotide into stem, loop, or unmappable regions from high-throughput structure probing data
-* Input
-	* count data (converted from bam file)
-* Output
-	* posterior probability of being acc (enriched in case) or stem (enriched in control)
-* Dataflow
-	* bam -> (Docker) -> bed -> (scripts) -> tab file (score or raw read count) -> global and local IDR
-* Target high-throughput structure analyses
+* Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
+* Input read count data
 	* PARS
 	* SHAPE-Seq
 	* icSHAPE
 	* DMS-Seq (assumed to be enriched only at A or C)
-* Workflow image
+
+* Output
+	* posterior probability of being accessible (enriched in case) or stem (enriched in control)
+
+* Algorithm
+	* [IDR](https://github.com/nboley/idr) + hidden Markov Model
+
 <img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
 
 ## Requirement
 * python3
 * numpy
 * scikit-learn
-* optional: [idr package](https://github.com/nboley/idr) if you would like to use for global IDR prediction
 
+
+## How to start
 ```
+git clone https://github.com/carushi/ParasoR
+cd ParasoR
+git checkout tags/v1.0.0
 cd src/
-python setup.py  build_ext --inplace
-# cython build
+python setup.py  build_ext --inplace # cython build
+cd ../example
+bash training.sh                     # Run test
 ```
 
-## Example
 
-* Bam to read count or coverage
-	* use docker image [https://hub.docker.com/r/carushi/rt_end_counter/](https://hub.docker.com/r/carushi/rt_end_counter/)
-	* find scripts and how to use in [https://github.com/carushi/RT_end_counter](https://github.com/carushi/RT_end_counter)
-
-
-* Preprocessing
-	* You already have ctss.bed and cov.bed from a bam file using docker image.
-```
-python script/bed_to_pars_format.py --offset -1 --fasta fast.fa ctss.bed
-# convert read count bed to tab and count the number of each base at modified sites
-python script/bed_to_pars_format.py --offset 0 --fasta fast.fa cov.bed
-# convert coverage bed to computation
-python src/score_converter.py --merge --output control_ctss sample1.ctss.bed.tab sample2.ctss.bed.tab
-# merge replicate data
-python src/score_converter.py --score icshape --skip_header --integrated --ouput sample case_ctss.bed.tab control_ctss.bed.tab
-# compute icshape score
-```
-
-* IDR computation
-```
-python src/IDR_hmm.py --train --time 10 --core 6 --grid --param sample_param.txt --ref ref.fa --output sample.csv
-python src/IDR_hmm.py --test  --time 10 --core 6        --param sample_param.txt --ref ref.fa --output sample.csv
-```
 
 ## Script
 * read_collapse.py
@@ -67,6 +48,15 @@ python src/IDR_hmm.py --test  --time 10 --core 6        --param sample_param.txt
 
 ## Reference
 
+* [Docker image for reactIDR](https://hub.docker.com/r/carushi/rt_end_counter/)
+	* Convert bam to read count data
+	* Find scripts and how to use at [https://github.com/carushi/RT_end_counter](https://github.com/carushi/RT_end_counter)
+
+* IDR
+	* Li, Qunhua, et al. "Measuring reproducibility of high-throughput experiments", The annals of applied statistics, 2011.
+	* [IDR in Python](https://github.com/nboley/idr)
+	* [IDR in R](https://cran.r-project.org/web/packages/idr/index.html)
+
+
 ## TODO
 * apply to MaP analyses
-* parallel computation with independent option
