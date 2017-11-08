@@ -1,6 +1,9 @@
 <img src="https://sites.google.com/site/cawatchm/reactIDR_logo.png" width="280">
 
-* Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
+#### Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
+
+<img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
+
 * Input read count data
 	* PARS
 	* SHAPE-Seq
@@ -13,7 +16,6 @@
 * Algorithm
 	* [IDR](https://github.com/nboley/idr) + hidden Markov Model
 
-<img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
 
 ## Requirement
 * python3
