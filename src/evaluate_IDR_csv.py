@@ -543,8 +543,8 @@ class AccEval:
             self.calc_all_auc(dict_count, prefix, curve='prc')
             self.calc_all_auc(dict_count, prefix, curve='prc', top=True)
             self.plot_boxplot_class(dict_count, prefix)
-            if self.comp_sample:
-                self.calc_ratio_auc(dict_count, prefix)
+            #if self.comp_sample:
+            #    self.calc_ratio_auc(dict_count, prefix)
 
     def comp_cov_auc(self, tname, dict_count, prefix, cdata):
         print(tname, 'ref' in dict_count[0])

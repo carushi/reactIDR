@@ -72,7 +72,7 @@ class DiffVis:
     def __init__(self, arg):
         self.arg = arg
 
-    def extract_variable_region(self, prefix, method, x, y, sample):
+    def extract_variable_region(self, prefix, method, x, y, sample, verbose=False):
         key = ''
         colors=['red', 'blue', 'black']
         vecs = []
@@ -95,21 +95,22 @@ class DiffVis:
                     EPS = 0.01
                     ten = max(EPS, np.percentile([x for x in vivo if x == x], 90.0))
                     quarter = max(EPS, np.percentile([x for x in vivo if x == x], 75.0))
-                    print(max([x for x in vivo]))
-                    print('quarter', name, ten, quarter)
                     pvec = ['n' if x < quarter or x != x else 'q' if x < ten else 't' for x in vivo]
-                    print(name, key, prefix, method, sample, " ".join(list(map(str, pvec))))
+                    if verbose:
+                        print(max([x for x in vivo]))
+                        print('quarter', name, ten, quarter)
+                        print(name, key, prefix, method, sample, " ".join(list(map(str, pvec))))
                 diff = [math.log((x+EPS)/(y+EPS)) if x == x and y == y and x*y > 0.0 else float('nan') for x, y in zip(vecs[0], vecs[1])]
                 ten = np.percentile([x for x in diff if x == x], 90.0)
                 quarter = np.percentile([x for x in diff if x == x], 75.0)
                 mten = np.percentile([x for x in diff if x == x], 10.0)
                 mquarter = np.percentile([x for x in diff if x == x], 25.0)
-                print('quarter diff', ten, quarter, mten, mquarter)
                 pvec = ['n' if x != x or y != y else 'tv' if d >= ten else 'qv' if d >= quarter else 'tt' if d <= mten else 'qt' if d <= mquarter else 'n' for x, y, d in zip(vecs[0], vecs[1], diff)]
-                # pvec = ['n' if x != x or y != y or x == y else 'v' if x > y else 't' for x, y in zip(vecs[0], vecs[1])]
-                print('diff', key, prefix, method, sample, " ".join(list(map(str, pvec))))
-                print(len(pvec))
-                print(len(vec))
+                if verbose:
+                    print('quarter diff', ten, quarter, mten, mquarter)
+                    print('diff', key, prefix, method, sample, " ".join(list(map(str, pvec))))
+                    print(len(pvec))
+                    print(len(vec))
                 break
             max_value = len(vec)
             mov = moving_average(vec, self.arg.window)

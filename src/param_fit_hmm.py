@@ -181,7 +181,7 @@ def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden
 class ParamFitHMM:
     """docstring for ParamFitHMM"""
     def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
-                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False):
+                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False, idr=True):
         self.hclass = hclass
         # self.fb = None
         assert hclass == 2 or hclass == 3
@@ -220,6 +220,7 @@ class ParamFitHMM:
         self.default_param_file = "final_param.txt"
         self.time = None
         self.core = core # multi core processes
+        self.idr = idr
 
     def set_dataset_and_hidden_class(self, data, sample, debug, core, reverse):
         hidden = None
@@ -427,6 +428,7 @@ class ParamFitHMM:
                         tIDR = np.append(tIDR, [float('nan')]*self.skip_end)
                 f.write(head+"\t"+self.keys[i+1]+"\t"+self.cond_name[index]+"\t"+";".join([("%.8e" % x) for x in tIDR])+"\n")
 
+
     def print_header_for_each_sample(self, index, data, head):
         if index == 0:
             flag = 'w'
@@ -464,7 +466,10 @@ class ParamFitHMM:
     def write_responsibility_to_file(self, head):
         for i in range(len(self.v)):
             param = self.get_IDR_params(i)
-            IDR = [1.-self.HMM.responsibility_state(x, i+1) for x in range(self.length)]
+            if self.idr:
+                IDR = [1.-self.HMM.responsibility_state(x, i+1) for x in range(self.length)]
+            else:
+                IDR = [self.HMM.responsibility_state(x, i+1) for x in range(self.length)]
             self.print_dataset_for_each_sample(i, IDR, head)
 
     def write_reference_to_file(self):

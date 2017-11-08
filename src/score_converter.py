@@ -52,9 +52,6 @@ def slide_coverage(vec, offset):
 
 def count_log_ratio(rt, cov, offset):
     cov = slide_coverage(cov, offset)
-    # print("ratio")
-    # print(rt[0:20])
-    # print(cov[0:20])
     for i in range(len(rt)):
         if rt[i] is not None and cov[i] is not None:
             if cov[i] < rt[i]:
@@ -103,12 +100,10 @@ def append_none_vector(vec, max_len):
 
 def append_none(tdata, tcdata, ndata, ncdata):
     max_len = max([len(tdata), len(tcdata), len(ndata), len(ncdata)])
-    print(len(tdata), len(tcdata), len(ndata), len(ncdata))
     tdata = append_none_vector(tdata, max_len)
     tcdata = append_none_vector(tcdata, max_len)
     ndata = append_none_vector(ndata, max_len)
     ncdata = append_none_vector(ncdata, max_len)
-    print(len(tdata), len(tcdata), len(ndata), len(ncdata) )
     return tdata, tcdata, ndata, ncdata
 
 def calc_icshape_reactivity(tdata, tcdata, ndata, ncdata, alpha=0.25, threshold=200, offset=0, ignore=False):
@@ -118,11 +113,9 @@ def calc_icshape_reactivity(tdata, tcdata, ndata, ncdata, alpha=0.25, threshold=
     scores = [None]*len(tdata)
     for i in range(len(ncdata)-offset):
         t, b, bc = tdata[i], ndata[i], ncdata[i+offset]
-        # print(t, b, bc, threshold)
         if bc > threshold:
             scores[i] = (t-alpha*b)/bc
     sortl = sorted([x for x in scores if x is not None])
-    # print("len", len(sortl))
     if len(sortl) == 0:
         return [0.]*len(ncdata)
     tmin, tmax = sortl[max(0, math.floor(5./100.*len(sortl))-1)], sortl[min(len(sortl)-1, math.ceil(95./100.*len(sortl))-1)]
@@ -273,12 +266,10 @@ class Converter:
                 f.write('\n')
 
     def compute_coverage_ratio(self, rtcount, coverage, dir="./", offset=1): #TODO 1 is correct?
-        print(rtcount, coverage)
+        # print(rtcount, coverage)
         for key, data, cdata in key_data_iterator(rtcount, coverage, dir):
             # sys.stderr.write("Processing "+key+"\n")
             if self.arg.integrated:
-                # print(key, data[0][0:10], cdata[0][0:10])
-                # print(np.sum(data, axis=0)[0:10], np.sum(cdata, axis=0)[0:10])
                 yield key, [count_log_ratio(np.sum(data, axis=0), np.sum(cdata, axis=0), offset)]
             else:
                 yield key, [count_log_ratio(rt, cov, offset) for rt, cov in zip(data, cdata)]
@@ -362,7 +353,7 @@ class Converter:
 
 
 if __name__ == '__main__':
-    debug = True
+    debug = False
     parser = get_parser()
     options = parser.parse_args()
     if debug:
