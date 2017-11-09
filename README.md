@@ -25,7 +25,7 @@
 
 ## How to start
 ```
-git clone https://github.com/carushi/ParasoR
+git clone https://github.com/carushi/reactIDR
 cd ParasoR/src
 git checkout tags/v1.0.0
 python setup.py  build_ext --inplace # cython build
