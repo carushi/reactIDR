@@ -1,6 +1,6 @@
 <img src="https://sites.google.com/site/cawatchm/reactIDR_logo.png" width="280">
 
-#### Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
+### Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
 
 <img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
 
@@ -26,12 +26,10 @@
 ## How to start
 ```
 git clone https://github.com/carushi/ParasoR
-cd ParasoR
+cd ParasoR/src
 git checkout tags/v1.0.0
-cd src/
 python setup.py  build_ext --inplace # cython build
-cd ../example
-bash training.sh                     # Run test
+cd ../example && bash training.sh    # Run test
 ```
 
 
