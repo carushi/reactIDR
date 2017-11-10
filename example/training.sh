@@ -62,9 +62,13 @@ done
 
 for cond in "vitro" "vivo"
 do
-    cat test_${cond}.csv > test_${cond}_all.csv
-    cat noHMM_${cond}.csv >> test_${cond}_all.csv
+    cat test_${cond}.csv | grep -v "^IDR\t" > test_${cond}_all.csv
+    cat noHMM_${cond}.csv | sed 's/IDR/noHMMIDR/' >> test_${cond}_all.csv
     python ../src/evaluate_IDR_csv.py --auc --score ${cond}_icshape_integ.tab -- test_${cond}_all.csv > AUC_test_${cond}.txt
     python ../src/evaluate_IDR_csv.py --parameter train_${cond}.out.txt
 done
-python ../src/plot_bargraph.py --header --window 1 --idr test_vivo_all.csv test_vitro_all.csv
+
+python ../src/plot_bargraph.py --window 1 --ignore --idr --output vivo_vitro test_vivo_all.csv  test_vitro_all.csv 
+python ../src/plot_bargraph.py --window 100 --ignore --idr --output vivo_vitro test_vivo_all.csv  test_vitro_all.csv 
+python ../src/plot_bargraph.py --ignore --idr --output vivo_vitro --struct 0.5 test_vivo_all.csv  test_vitro_all.csv  > a.txt
+python ../src/plot_bargraph.py --ignore --idr --output vivo_vitro --bed output --threshold 0.1 --segment test_vivo_all.csv  test_vitro_all.csv 
