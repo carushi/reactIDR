@@ -42,19 +42,19 @@ done
 PATTERN="train"
 for cond in "vitro" "vivo"
 do
-    python ../src/IDR_hmm.py --idr --case ${cond}_case.tab --cont ${cond}_cont.tab --time 10 --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
+    python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --time 10 --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 
 PATTERN="test"
 for cond in "vitro" "vivo"
 do
-    python ../src/IDR_hmm.py --idr --case ${cond}_case.tab --cont ${cond}_cont.tab --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
+    python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 
 PATTERN="global"
 for cond in "vitro" "vivo"
 do
-    python ../src/IDR_hmm.py --idr --case ${cond}_case.tab --cont ${cond}_cont.tab --core 5 --param default_parameters.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
+    python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --core 5 --param default_parameters.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 
 
