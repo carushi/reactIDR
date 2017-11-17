@@ -429,7 +429,7 @@ class AccEval:
                         if curve == "auc":
                             tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
                             xlab, ylab = "1-Specificity", "Sensitivity"
-                        self.check_print_debug(fprefix, score_type, pred, pred, answer)
+                        #self.check_print_debug(fprefix, score_type, pred, pred, answer)
                         fig, tymin = self.compute_and_plot_curves(pos, answer, pred, score_type, fprefix, sample, curve, top, fig, assym)
                         ymin = min(ymin, tymin)
                     if top:

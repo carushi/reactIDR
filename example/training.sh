@@ -38,22 +38,25 @@ python ../src/score_converter.py --score icshape --print_all --dir ./ --coverage
 python ../src/score_converter.py --score icshape --print_all --integrated --dir ./ --coverage ${cond}_cov_case.tab ${cond}_cov_cont.tab --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
 done
 
-#training
+echo training >&2
 PATTERN="train"
 for cond in "vitro" "vivo"
 do
+    echo writing to ${PATTERN}_${cond}.csv >&2
     python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --time 10 --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 
 PATTERN="test"
 for cond in "vitro" "vivo"
 do
+    echo writing to ${PATTERN}_${cond}.csv >&2
     python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --core 5 --param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 
 PATTERN="global"
 for cond in "vitro" "vivo"
 do
+    echo writing to ${PATTERN}_${cond}.csv >&2
     python ../src/IDR_hmm.py --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --core 5 --param default_parameters.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
 

@@ -99,7 +99,6 @@ def calc_tp_fp_2d(answer, pred, pos, verbose=True, narm=True, negative=False, as
 
 
 def calc_tp_fp(answer, pred, pos, verbose=True, narm=True, negative=False, assym=False):
-    # print(len(pred), len(answer), file=sys.stderr)
     assert len(pred) == len(answer)
     if assym:
         converted_p, answer = pred_conversion_assym(pred, narm, negative, pos, answer)
