@@ -26,7 +26,8 @@
 ## How to start
 ```
 git clone https://github.com/carushi/reactIDR
-cd ParasoR/src
+cd reactIDR/src
+git checkout tags/v1.0.1
 python setup.py  build_ext --inplace # cython build
 cd ../example && bash training.sh    # Run test
 ```
