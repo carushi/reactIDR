@@ -77,7 +77,7 @@ def c_my_compute_pseudo_values(
     lb = c_my_cdf_i(smallest_r, mu, sigma, lamda, lb, ub, EPS)
     ordered_zs[0] = lb
 
-    cdef size_t i = 0, j= 0
+    cdef int i = 0, j= 0
     cdef double r = 0
     cdef double res = 10, prev_res = 10
     for i in range(1, N):
