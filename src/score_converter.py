@@ -125,6 +125,8 @@ def calc_icshape_reactivity(tdata, tcdata, ndata, ncdata, alpha=0.25, threshold=
 def normalized_vector(vec, start=5, end =30, nstart=32, nend=32):
     trimmed_vec = [x for i, x in enumerate(vec) if i >= start and i < len(vec)-end]
     norm = top_90_95(trimmed_vec)
+    if norm == 0.:
+        norm = 1.0
     return [x/norm for x in vec]
 
 
