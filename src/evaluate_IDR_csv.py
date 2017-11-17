@@ -207,7 +207,7 @@ class AccEval:
                 trans_list, alines = append_integrated_transcript(lines, self.skip, ["RNA18S5+", "RNA5-8S5+", "RNA28S5+", "ENSG00000201321|ENST00000364451+"])
                 results[i] = (lines+alines, prefix)
             lines, prefix = results[0][0], results[0][1]
-            print(prefix, lines)
+            #print(prefix, lines)
         else:
             lines, prefix = self.get_lines()
             if self.arg.auc or self.arg.covauc:
@@ -424,8 +424,8 @@ class AccEval:
                         # if method == 'score_type == 'noHMMIDR':
                         if 'all_unknown' in prefix and curve == 'auc' and (assym or sample == "case"):
                             tpred, tanswer = pred_conversion_assym(pred, True, False, pos, answer)
-                            print("pred", score_type, sample, pos, ","+",".join(map(str, tpred)))
-                            print("answer", score_type, sample, pos, ","+",".join(map(str, tanswer)))
+                            #print("pred", score_type, sample, pos, ","+",".join(map(str, tpred)))
+                            #print("answer", score_type, sample, pos, ","+",".join(map(str, tanswer)))
                         if curve == "auc":
                             tpr, fpr, auc = calc_tp_fp(answer, pred, pos, assym=assym)
                             xlab, ylab = "1-Specificity", "Sensitivity"
@@ -536,8 +536,8 @@ class AccEval:
     def plot_all_auc(self, tname, dict_count, prefix):
         if 'ref' in dict_count[0]:
             print(dict_count[0].keys())
-            if 'count' in dict_count[0]:    print(dict_count[0]['count'])
-            if 'count' in dict_count[1]:    print(dict_count[1]['count'])
+            #if 'count' in dict_count[0]:    print(dict_count[0]['count'])
+            #if 'count' in dict_count[1]:    print(dict_count[1]['count'])
             self.calc_all_auc(dict_count, prefix, curve='auc')
             self.calc_all_auc(dict_count, prefix, curve='prc')
             self.calc_all_auc(dict_count, prefix, curve='prc', top=True)
@@ -1021,7 +1021,7 @@ class ScatVis:
         s2 = [x for x in rep_count["score2"]]
         exp = dict_count
         prob = copy.deepcopy(dict_count)
-        print(dict_count)
+        #print(dict_count)
         print(len(s1), len(s2), len(prob))
         norm = "_raw"
         if "IDR" in prefix:
