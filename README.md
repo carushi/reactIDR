@@ -22,12 +22,14 @@
 * numpy
 * scikit-learn
 
+and more packages are required for visualization process as follows:
+* pandas
+* seaborn
 
 ## How to start
 ```
 git clone https://github.com/carushi/reactIDR
 cd reactIDR/src
-git checkout tags/v1.0.1
 python setup.py  build_ext --inplace # cython build
 cd ../example && bash training.sh    # Run test
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-
+set -poe pipefail
 DIR="./"
 cd $DIR
 

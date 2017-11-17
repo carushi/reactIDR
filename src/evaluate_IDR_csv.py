@@ -5,7 +5,6 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patches as mpatches
 from scipy.stats import rankdata, kde
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis

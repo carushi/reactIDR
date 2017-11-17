@@ -5,7 +5,6 @@ import numpy as np
 import itertools
 import argparse
 import utility
-import pvalue
 import os.path
 
 def empty_iter():
@@ -285,6 +284,7 @@ class Converter:
                     f.write('\n')
 
     def convert_to_pvalue(self):
+        import pvalue
         sidx = pvalue.check_dist_model(self.arg.ndist)
         for i in range(len(self.arg.rtFiles)):
             with open(self.get_output_name(i), "w") as f:
