@@ -1279,10 +1279,9 @@ class ParamVis:
         self.visualize_transition_parameter([line for line in lines if re.search('^Set new_transition', line) is not None], prefix)
         self.visualize_lhd([line for line in lines if re.search('new lhd', line) is not None], prefix)
 
-
-if __name__ == '__main__':
+def main(argv):
     parser = get_parser()
-    options = parser.parse_args()
+    options = parser.parse_args(argv[1:])
     print(options)
     if len(options.input) == 0:
         os.exit(0)
@@ -1295,3 +1294,6 @@ if __name__ == '__main__':
     else:
         acc = AccEval(options)
         acc.plot_heatmap()
+
+if __name__ == '__main__':
+    main(sys.argv)

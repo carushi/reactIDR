@@ -140,13 +140,14 @@ class IDRHmm:
             self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                              fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
 
-
-
-if __name__ == '__main__':
+def main(argv):
     parser = get_parser()
-    options = parser.parse_args()
+    options = parser.parse_args(argv[1:])
     hmm = IDRHmm(options)
     if options.print_keys:
         hmm.get_print_keys()
     else:
         hmm.infer_reactive_sites()
+
+if __name__ == '__main__':
+    main(sys.argv)

@@ -353,12 +353,16 @@ class Converter:
         else:
             return
 
-
-if __name__ == '__main__':
+def main(argv):
     debug = False
     parser = get_parser()
-    options = parser.parse_args()
+    options = parser.parse_args(argv[1:])
+    print(argv)
+    print(options)
     if debug:
         print(options)
     con = Converter(options, debug)
     con.convert_count_to_score()
+
+if __name__ == '__main__':
+    main(sys.argv)
