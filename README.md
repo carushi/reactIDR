@@ -29,9 +29,9 @@ and more packages are required for visualization process as follows:
 ## How to start
 ```
 git clone https://github.com/carushi/reactIDR
-cd reactIDR/src
-python setup.py  build_ext --inplace # cython build
-cd ../example && bash training.sh    # Run test
+cd reactIDR/
+python setup.py  build_ext -b reactIDR/ # cython build
+cd example && bash training.sh    # Run test
 ```
 
 
