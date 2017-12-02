@@ -62,3 +62,4 @@ cd ../example && bash training.sh    # Run test
 
 ## TODO
 * apply to MaP analyses
+* pip install
