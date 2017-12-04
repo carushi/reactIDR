@@ -34,8 +34,10 @@ done
 # score computation
 for cond in "vitro" "vivo"
 do
-python ../reactIDR/score_converter.py --score icshape --print_all --dir ./ --coverage ${cond}_cov_case.tab ${cond}_cov_cont.tab --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
-python ../reactIDR/score_converter.py --score icshape --print_all --integrated --dir ./ --coverage ${cond}_cov_case.tab ${cond}_cov_cont.tab --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
+python ../reactIDR/score_converter.py --score icshape --print_all --dir ./ --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
+python ../reactIDR/score_converter.py --score icshape --print_all --integrated --dir ./ --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
+#python ../reactIDR/score_converter.py --score icshape --print_all --dir ./ --coverage ${cond}_cov_case.tab ${cond}_cov_cont.tab --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
+#python ../reactIDR/score_converter.py --score icshape --print_all --integrated --dir ./ --coverage ${cond}_cov_case.tab ${cond}_cov_cont.tab --skip_header --output ${cond} ${cond}_ctss_case.tab ${cond}_ctss_cont.tab
 done
 
 echo training >&2
