@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import random
 from param_fit_hmm import *
 from utility import *
 
@@ -22,6 +23,7 @@ def get_parser():
     "(dot-blacket style e.g. x.().x)", required=False, default="")
     parser.add_argument("--DMS", dest="DMS", type=str, help="Use fasta file to exclude G and T (U) nucleotides from stem or accessible class due to no information.", required=False, default="")
     parser.add_argument("--test", dest="test", action="store_true", help="apply given parameteres (test_<output>)", required=False)
+    parser.add_argument("--fit", dest="fit", action="store_true", help="apply given parameteres and fit (fit_<output>)", required=False)
     parser.add_argument("--train", dest="train", action="store_true", help="train the parameters based on the reference information (train_<output>)", required=False)
     parser.add_argument("--time", dest="time", type=int, help="maximum iteration time during the training", required=False)
     parser.add_argument("--global", dest="noHMM", action="store_true", help="output IDR (noHMM_<output>)", required=False)
@@ -36,6 +38,7 @@ def get_parser():
     parser.add_argument("--fix_mu", dest="fix_mu", action="store_true", help="fix mu, or no optimization.", required=False)
     parser.add_argument("--fix_sigma", dest="fix_sigma", action="store_true", help="fix sigma, or no optimization.", required=False)
     parser.add_argument("--fix_trans", dest="fix_trans", action="store_true", help="fix transition matrix, or no optimization.", required=False)
+    parser.add_argument("--random", dest="random", action="store_true", help="set initial parameters randomly", required=False)
     parser.add_argument("-s", dest="start", type=int, help="ignore n bases from the very 5'-end", default=-1, required=False)
     parser.add_argument("-e", dest="end", type=int, help="ignore n bases from the very 3'-end", default=35, required=False)
     parser.add_argument("--idr", dest="idr", action="store_true", help="output 1-posterior probability during the test, train, and global mode", required=False)
@@ -68,6 +71,14 @@ def read_keys(files, verbose=True):
         print("# Read key files", files, "->", len(target))
     return target
 
+def set_random(options):
+    options.mu = random.choice(np.linspace(0.1, 1.0, 10))
+    options.sigma = random.choice(np.linspace(0.1, 1.0, 10))
+    options.rho = random.choice(np.linspace(0.0, 0.9, 10))
+    options.p = random.choice(0.1, 0.9, 10)
+    return options
+
+
 class IDRHmm:
     """docstring for IDRhmm"""
     def __init__(self, arg):
@@ -79,6 +90,7 @@ class IDRHmm:
         self.params = [arg.mu, arg.sigma, arg.rho, arg.p]
         self.grid = arg.grid
         self.test = arg.test
+        self.fit = arg.fit
         self.output = arg.output
         self.ref = arg.ref
         self.train = arg.train
@@ -101,7 +113,9 @@ class IDRHmm:
             self.output = "train_"+self.output
         elif self.test:
             self.output = "test_"+self.output
-        elif self.arg.noHMM:
+        elif self.fit:
+            self.output = "fit_"+self.output
+        elif self.noHMM:
             self.output = "noHMM_"+self.output
         else:
             pass
@@ -134,34 +148,42 @@ class IDRHmm:
         else:
             for trans in seta:
                 if self.arg.threshold == self.arg.threshold:
-                    yield read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, set(trans))
+                    yield read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, trans)
                 else:
-                    yield read_data_pars_format_multi(self.input, True, set(trans))
+                    yield read_data_pars_format_multi(self.input, True, trans)
 
     def infer_reactive_sites(self):
         hclass = self.set_hclass()
         self.set_prefix_output()
         append = False
         for data in self.get_data():
-            self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
-                                self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
-                                core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append)
-            if self.train:
-                self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
-                                    fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
-            elif self.test:
-                self.para.test_hmm_EMP(self.grid, N=-1, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
-                                   fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
-            elif self.noHMM:
-                self.para.estimate_global_IDR(self.grid)
-            else:
-                self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
-                                             fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
-            append = True
+            try:
+                self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
+                                    self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
+                                    core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append)
+                if self.train:
+                    self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
+                                        fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
+                elif self.test:
+                    self.para.test_hmm_EMP(self.grid, N=-1, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+                                       fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
+                elif self.fit:
+                    self.para.fit_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+                                       fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
+                elif self.noHMM:
+                    self.para.estimate_global_IDR(self.grid)
+                else:
+                    self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
+                                                 fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
+                append = True
+            except:
+                pass
 
 def main(argv):
     parser = get_parser()
     options = parser.parse_args(argv[1:])
+    if options.random:
+        options = set_random(options)
     hmm = IDRHmm(options)
     if options.print_keys:
         hmm.get_print_keys()

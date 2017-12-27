@@ -157,10 +157,10 @@ def set_to_same_length(seta, data, hidden):
     return data, hidden
 
 def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden=None, debug = True, verbose=True):
-    if verbose:
-        print("Dataset--------")
     seta = get_target_transcript(data, sample_size, debug)
     seta = sorted(list(seta))
+    if verbose:
+        print("Dataset--------")
     hidden_mat = None
     if hidden is not None:
         seta, hidden = filter_no_annotated_data(seta, hidden)
@@ -183,6 +183,7 @@ class ParamFitHMM:
     def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
                  start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False, idr=True, append=append):
         self.hclass = hclass
+        self.append = append
         # self.fb = None
         assert hclass == 2 or hclass == 3
         if self.hclass == 2:
@@ -221,7 +222,7 @@ class ParamFitHMM:
         self.time = None
         self.core = core # multi core processes
         self.idr = idr
-        self.append = append
+
 
     def set_dataset_and_hidden_class(self, data, sample, debug, core, reverse):
         hidden = None
@@ -649,6 +650,11 @@ class ParamFitHMM:
             self.read_params(param_file)
         self.estimate_hmm_based_IDR(grid, 0, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
 
+    def fit_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
+        if param_file is not None:
+            self.read_params(param_file)
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
+
     def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
         self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
         self.estimate_hmm_based_IDR(grid, N=-1, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans)
@@ -697,5 +703,9 @@ class ParamFitHMM:
             if debug: self.print_result()
             print('--------')
         self.write_responsibility_to_file("IDR-HMM-final")
-        if N > 0: self.write_params(param_file)
+        if N > 0:
+            if self.train:
+                self.write_params(param_file)
+            else:
+                self.write_params('fit_'+param_file)
         self.print_time("last_iter")
