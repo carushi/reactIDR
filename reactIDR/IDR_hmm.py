@@ -41,6 +41,7 @@ def get_parser():
     parser.add_argument("--idr", dest="idr", action="store_true", help="output 1-posterior probability during the test, train, and global mode", required=False)
     parser.add_argument("-n", "--sample", dest="sample_size", type=int, help="sample size for test (default: all)", default=-1, metavar="SAMPLESIZE", required=False)
     parser.add_argument("--independent", dest="inde", action="store_true", help="compute HMM for each transcript independently (avoid overflow).", required=False)
+    parser.add_argument("--each-transcript", dest="each", action="store_true", help="compute HMM for each transcript at each time (independent read distribution).", required=False)
     parser.add_argument("--print_keys", dest="print_keys", action="store_true", help="print keys (e.g., gene name) to be computed.", required=False)
     parser.add_argument("--key_file", nargs='+', dest="key_files", help="read key files to be computed (one gene per one line).", required=False)
     parser.add_argument("--threshold", dest="threshold", type=float, help="remove transcripts whose average score is lower than a threshold.", default=float('nan'), required=False)
@@ -109,35 +110,51 @@ class IDRHmm:
         target = read_only_keys_of_high_expression_pars_multi(self.input, self.arg.threshold)
         print('\n'.join(target))
 
+    def extract_each_trans(self, key, rep):
+        dict = {chr(0): [0], key: rep[key]}
+        if key[-1] == '+':
+            minus = key[0:-1]+'-'
+            if minus in rep:    dict[minus] = rep[minus]
+        return dict
+
     def get_data(self):
         seta = None
         if len(self.key_files) > 0:
             seta = read_keys(self.key_files)
-        if self.arg.threshold == self.arg.threshold:
-            data = read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, seta)
+        if not self.arg.each:
+            seta = [seta]
+        if seta is None:
+            if self.arg.threshold == self.arg.threshold:
+                data = read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, seta)
+            else:
+                data = read_data_pars_format_multi(self.input, True, seta)
+            for key in data[0][0].keys():
+                if key != chr(0) and key[-1] != '-':
+                    yield [[self.extract_each_trans(key, rep) for rep in sample] for sample in data]
         else:
-            data = read_data_pars_format_multi(self.input, True, seta)
-        return data
+            for trans in seta:
+                if self.arg.threshold == self.arg.threshold:
+                    yield read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, set(trans))
+                else:
+                    yield read_data_pars_format_multi(self.input, True, set(trans))
 
     def infer_reactive_sites(self):
         hclass = self.set_hclass()
-        data = self.get_data()
         self.set_prefix_output()
-        self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
+        for data in self.get_data():
+            self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                 self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
                                 core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr)
-        # if self.arg.debug:
-        #     self.para.estimate_hmm_based_IDR_debug(self.grid, N=10)
-        if self.train:
-            self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
+            if self.train:
+                self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
                                     fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
-        elif self.test:
-            self.para.test_hmm_EMP(self.grid, N=-1, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+            elif self.test:
+                self.para.test_hmm_EMP(self.grid, N=-1, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
                                    fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
-        elif self.noHMM:
-            self.para.estimate_global_IDR(self.grid)
-        else:
-            self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
+            elif self.noHMM:
+                self.para.estimate_global_IDR(self.grid)
+            else:
+                self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                              fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
 
 def main(argv):
