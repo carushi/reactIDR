@@ -141,10 +141,11 @@ class IDRHmm:
     def infer_reactive_sites(self):
         hclass = self.set_hclass()
         self.set_prefix_output()
+        append = False
         for data in self.get_data():
             self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                 self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
-                                core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr)
+                                core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append)
             if self.train:
                 self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
                                     fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
@@ -156,6 +157,7 @@ class IDRHmm:
             else:
                 self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                              fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
+            append = True
 
 def main(argv):
     parser = get_parser()

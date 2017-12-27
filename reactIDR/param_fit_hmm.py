@@ -181,7 +181,7 @@ def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden
 class ParamFitHMM:
     """docstring for ParamFitHMM"""
     def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
-                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False, idr=True):
+                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False, idr=True, append=append):
         self.hclass = hclass
         # self.fb = None
         assert hclass == 2 or hclass == 3
@@ -221,6 +221,7 @@ class ParamFitHMM:
         self.time = None
         self.core = core # multi core processes
         self.idr = idr
+        self.append = append
 
     def set_dataset_and_hidden_class(self, data, sample, debug, core, reverse):
         hidden = None
@@ -430,7 +431,7 @@ class ParamFitHMM:
 
 
     def print_header_for_each_sample(self, index, data, head):
-        if index == 0:
+        if index == 0 and not self.append:
             flag = 'w'
         else:
             flag = 'a'
