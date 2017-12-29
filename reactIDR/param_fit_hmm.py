@@ -234,7 +234,9 @@ class ParamFitHMM:
         if hidden is not None:
             hidden[chr(0)] = []
         self.v, self.stop_sites, self.keys, hidden, self.length_list = set_hmm_transcripts(data, sample, self.max_len, self.skip_start, self.skip_end, hidden, debug)
-        print(self.keys)
+        if self.verbose:
+            print('Transcript--')
+            print(self.keys)
         self.length = len(self.v[0][0])
         self.HMM = HMM(self.hclass, self.v, self.stop_sites, hidden, core, self.independent)
         self.init_result_file(data)
@@ -547,9 +549,12 @@ class ParamFitHMM:
             print("HMM: print result.")
             self.HMM.print_result()
 
-    def write_params(self, fname=None):
+    def write_params(self, fname=None, prefix=''):
         if fname is None:
             fname = self.default_param_file
+        if len(self.keys) == 2 and not self.train:
+            fname = self.keys[1] + '_' + fname
+        fname = prefix + fname
         if self.verbose:
             print("Write to param file: ", "final_param.txt")
         with open(fname, 'w') as f:
@@ -582,7 +587,7 @@ class ParamFitHMM:
         z_list = self.get_pseudo_value(index)
         mean_pseudo_val_change = sum([np.mean([np.abs(p-z) for p, z in zip(prev_z_list, z_list)])])
         sum_param_change = sum([np.abs(x-y) for x, y in zip(theta, prev_theta) ]) #np.abs(theta - prev_theta).sum()
-        if self.verbose:
+        if self.verbose:fname
             print(("Iter %i" % iindex), ("Dataset %i" % index),
                 "%.2e" % sum_param_change,
                 "%.2e" % mean_pseudo_val_change,
@@ -653,7 +658,7 @@ class ParamFitHMM:
     def fit_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
         if param_file is not None:
             self.read_params(param_file)
-        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True, prefix='fit_')
 
     def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
         self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
@@ -674,7 +679,7 @@ class ParamFitHMM:
             if head == 'global' or head == 'last_iter':
                 print("Memory check:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "(bytes)")
 
-    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None, debug=False, test=False):
+    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None, debug=False, test=False, prefix=''):
         """ N=-1: no forward-backward (IDR computation). N=0 -> forward-backward once with trained parameters."""
         self.print_time('start')
         self.print_setting("IDR-HMM", N, grid, fix_mu, fix_sigma)
@@ -707,5 +712,5 @@ class ParamFitHMM:
             if self.train:
                 self.write_params(param_file)
             else:
-                self.write_params('fit_'+param_file)
+                self.write_params(param_file, 'learn_' if len(prefix) == 0 else prefix)
         self.print_time("last_iter")

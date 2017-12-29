@@ -126,7 +126,7 @@ class IDRHmm:
 
     def extract_each_trans(self, key, rep):
         dict = {chr(0): [0], key: rep[key]}
-        if key[-1] == '+':
+        if key[-1] == '+' and False:
             minus = key[0:-1]+'-'
             if minus in rep:    dict[minus] = rep[minus]
         return dict
@@ -173,7 +173,7 @@ class IDRHmm:
                 elif self.noHMM:
                     self.para.estimate_global_IDR(self.grid)
                 else:
-                    self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
+                    self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
                                                  fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 append = True
             except:

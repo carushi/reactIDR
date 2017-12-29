@@ -2,6 +2,7 @@ from sklearn import metrics
 import math
 import numpy as np
 import sys
+import random
 
 def log_count(x):
     if x != "nan":
@@ -58,6 +59,7 @@ def set_positive_negative(answer, sp):
 
 def compute_2d_roc(answer, pred_case, pred_cont, pos):
     tup = [(pred_case[i] if pred_case[i] == pred_case[i] else -1., pred_cont[i] if pred_cont[i] == pred_cont[i] else -1., answer[i]) for i in range(len(answer)) if answer[i] >= 0.0]
+    random.shuffle(tup)
     print(tup)
     print([float(np.nanmax([x[0], x[1]])) for x in tup])
     tup = sorted(tup, key=lambda x: float(np.nanmax([x[0], x[1]])), reverse=True)

@@ -1216,6 +1216,13 @@ class ScatVis:
         plt.close()
 
 
+def add_prefix(lines):
+    index = [i for i, line in enumerate(lines) if 'Transcript' in line]
+    if len(index) == 0 or index[0] == len(lines) - 1:
+        return ''
+    else:
+        return '_' + lines[index[0] + 1].strip('[]\n').split(',')[1].strip(' \'') + '_'
+
 class ParamVis:
     """docstring for ParamVis"""
     def __init__(self, arg):
@@ -1270,14 +1277,23 @@ class ParamVis:
         plt.savefig(prefix+"_q_func.pdf")
         plt.clf()
 
+    def visualize_param_block(self, lines, prefix):
+        prefix = prefix + add_prefix(lines)
+        self.visualize_idr_parameter([line for line in lines if re.match('^Set new_p', line) is not None], prefix)
+        self.visualize_transition_parameter([line for line in lines if re.search('^Set new_transition', line) is not None], prefix)
+        self.visualize_lhd([line for line in lines if re.search('new lhd', line) is not None], prefix)
+
     def visualize_parameter(self):
         lines = []
         with open(self.arg.input[0]) as f:
             lines = [line.rstrip('\n') for line in f.readlines() if len(line) > 0 and line[0] != "#"]
         prefix = os.path.basename(self.arg.input[0])
-        self.visualize_idr_parameter([line for line in lines if re.match('^Set new_p', line) is not None], prefix)
-        self.visualize_transition_parameter([line for line in lines if re.search('^Set new_transition', line) is not None], prefix)
-        self.visualize_lhd([line for line in lines if re.search('new lhd', line) is not None], prefix)
+        pre = -1
+        for i in range(len(lines)+1):
+            if i == len(lines) or 'Dataset' in lines[i]:
+                if pre >= 0:
+                    self.visualize_param_block(lines[pre:i], prefix)
+                pre = i
 
 def main(argv):
     parser = get_parser()
