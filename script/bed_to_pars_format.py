@@ -17,7 +17,7 @@ def get_parser():
     parser.add_argument("--name", dest="name", action="store_true", help="print names to which more than one read is assigned", required=False)
     parser.add_argument('--chr', dest="chr", help="chromosome conversion for refseq", metavar="CHROMOSOME", default="", required=False)
     parser.add_argument('--fasta', dest="fasta", help="required to calculate base ratio at mapped position", metavar="FASTA", default="", required=False)
-    parser.add_argument('--offset', dest="offset", help="offset for the target position (PARS: 0, DMS&SHAPE: -1...)", default=0, type=int, required=False)
+    parser.add_argument('--offset', dest="offset", help="offset for the target position (PARS: -1, DMS&SHAPE: -1...)", default=0, type=int, required=False)
     parser.add_argument("--memory", dest="memory", action="store_true", help="Memory saving mode. Files should be sorted.", required=False)
     parser.set_defaults(stdout=False, name=False)
     return parser
