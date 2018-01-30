@@ -1,6 +1,6 @@
 <img src="https://sites.google.com/site/cawatchm/reactIDR_logo.png" width="280">
 
-### Statistical reproducibility evaluation of high-throughput structure analyses for robust RNA reactivity classification
+### Evaluation of the statistical reproducibility of high-throughput structural analyses for a robust RNA reactivity classification
 
 <img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
 
@@ -11,7 +11,7 @@
 	* DMS-Seq (assumed to be enriched only at A or C)
 
 * Output
-	* posterior probability of being accessible (enriched in case) or stem (enriched in control)
+	* posterior probability of being loop (enriched in case) or stem (enriched in control)
 
 * Algorithm
 	* [IDR](https://github.com/nboley/idr) + hidden Markov Model
@@ -62,4 +62,3 @@ cd example && bash training.sh    # Run test
 
 ## TODO
 * apply to MaP analyses
-* pip install

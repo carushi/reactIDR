@@ -157,6 +157,8 @@ class IDRHmm:
         self.set_prefix_output()
         append = False
         for data in self.get_data():
+            if len(data) == 0 or len(data[0]) == 0:
+                continue
             try:
                 self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                     self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \

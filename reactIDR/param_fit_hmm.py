@@ -2,6 +2,7 @@
 import sys
 import time
 import resource
+import os
 from forward_backward import *
 from scipy.optimize import fminbound, minimize, fmin_l_bfgs_b
 from scipy.stats import rankdata
@@ -552,9 +553,11 @@ class ParamFitHMM:
     def write_params(self, fname=None, prefix=''):
         if fname is None:
             fname = self.default_param_file
+        dir, base = os.path.dirname(fname), os.path.basename(fname)
         if len(self.keys) == 2 and not self.train:
-            fname = self.keys[1] + '_' + fname
-        fname = prefix + fname
+            fname = os.path.join(dir, prefix + self.keys[1] + '_' + base)
+        else:
+            fname = os.path.join(dir, prefix + fname)
         if self.verbose:
             print("Write to param file: ", "final_param.txt")
         with open(fname, 'w') as f:
