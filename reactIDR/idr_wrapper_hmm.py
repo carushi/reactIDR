@@ -59,7 +59,7 @@ def calc_IDR_23dim(r1, r2, r3, theta, thread=1):
     local_idr_order = localIDR.argsort()
     ordered_local_idr = localIDR[local_idr_order]
     ordered_local_idr_ranks = rankdata(ordered_local_idr, method='max')
-    IDR = [ ordered_local_idr[:rank].mean() for i, rank in enumerate(ordered_local_idr_ranks) ]
+    IDR = [ ordered_local_idr[:int(rank)].mean() for i, rank in enumerate(ordered_local_idr_ranks) ]
     IDR = np.array(IDR)[local_idr_order.argsort()]
     return localIDR, IDR
 
