@@ -182,7 +182,8 @@ def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden
 class ParamFitHMM:
     """docstring for ParamFitHMM"""
     def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
-                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, core=1, reverse=False, independent=False, idr=True, append=append):
+                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, iparam=None, oparam=None, core=1, 
+                 reverse=False, independent=False, idr=True, append=False):
         self.hclass = hclass
         self.append = append
         # self.fb = None
@@ -217,6 +218,8 @@ class ParamFitHMM:
         self.cond_name = ['case', 'cont']
         if reverse:
             self.cond_name = self.cond_name[::-1]
+        self.iparam = iparam
+        self.oparam = oparam
         self.independent = independent
         self.set_dataset_and_hidden_class(data, sample, debug, core, reverse)
         self.default_param_file = "final_param.txt"
@@ -359,13 +362,13 @@ class ParamFitHMM:
             if index == 0 and fix_mu: continue
             if index == 1 and fix_sigma: continue
             theta = prev_theta.copy()
-            if self.verbose:
-                print('\tStart lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], theta[index])
+            #if self.verbose:
+            #    print('\tStart lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], theta[index])
             alpha = fmin_l_bfgs_b(lbfgs_qfunc, theta[index], approx_grad=APPROX_GRAD, args=(index, sindex, theta, self.HMM), bounds=[(min_vals[index], max_vals[index])], factr=eps)
             # alpha = fmin_l_bfgs_b(lbfgs_qfunc, theta[index], args=(index, sindex, theta, self.HMM), bounds=[(min_vals[index], max_vals[index])], factr=eps)
-            if self.verbose:
-                print('\tEnd lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], alpha)
-                sys.stdout.flush()
+            #if self.verbose:
+            #   print('\tEnd lbfgs-b', self.cond_name[sindex], ['mu', 'sigma', 'rho', 'q'][index], alpha)
+            #    sys.stdout.flush()
             theta[index] = float(alpha[0][0])
             if len(new_lhd) < 3 or new_lhd[index] + eps >= prev_lhd:
                 theta, changed_params = clip_model_params(theta)
@@ -550,7 +553,8 @@ class ParamFitHMM:
             print("HMM: print result.")
             self.HMM.print_result()
 
-    def write_params(self, fname=None, prefix=''):
+    def write_params(self, prefix=''):
+        fname = self.oparam
         if fname is None:
             fname = self.default_param_file
         dir, base = os.path.dirname(fname), os.path.basename(fname)
@@ -559,16 +563,15 @@ class ParamFitHMM:
         else:
             fname = os.path.join(dir, prefix + fname)
         if self.verbose:
-            print("Write to param file: ", "final_param.txt")
+            print("Write to param file: ", fname)
         with open(fname, 'w') as f:
             f.write(write_mat_one_line(self.transition_param))
             f.write("\n")
             f.write(str(self.params))
             f.write("\n")
 
-    def read_params(self, fname="final_param.txt"):
-        if fname is None:
-            fname = self.default_param_file
+    def read_params(self):
+        fname = self.iparam
         with open(fname) as f:
             lines = f.readlines()
             try:
@@ -590,7 +593,7 @@ class ParamFitHMM:
         z_list = self.get_pseudo_value(index)
         mean_pseudo_val_change = sum([np.mean([np.abs(p-z) for p, z in zip(prev_z_list, z_list)])])
         sum_param_change = sum([np.abs(x-y) for x, y in zip(theta, prev_theta) ]) #np.abs(theta - prev_theta).sum()
-        if self.verbose:fname
+        if self.verbose:
             print(("Iter %i" % iindex), ("Dataset %i" % index),
                 "%.2e" % sum_param_change,
                 "%.2e" % mean_pseudo_val_change,
@@ -650,18 +653,18 @@ class ParamFitHMM:
                 hidden = convert_to_hidden_dict(struct_dict, lambda x: 0 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
         return hidden
 
-    def train_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
-        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans, param_file)
+    def train_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False):
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu, fix_sigma, fix_trans)
 
-    def test_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
-        if param_file is not None:
-            self.read_params(param_file)
-        self.estimate_hmm_based_IDR(grid, 0, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True)
+    def test_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False):
+        if self.iparam is not None:
+            self.read_params()
+        self.estimate_hmm_based_IDR(grid, 0, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, test=True)
 
-    def fit_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None):
-        if param_file is not None:
-            self.read_params(param_file)
-        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, param_file=param_file, test=True, prefix='fit_')
+    def fit_hmm_EMP(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False):
+        if self.iparam is not None:
+            self.read_params()
+        self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, test=True, prefix='fit_')
 
     def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
         self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
@@ -682,7 +685,7 @@ class ParamFitHMM:
             if head == 'global' or head == 'last_iter':
                 print("Memory check:", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "(bytes)")
 
-    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, param_file=None, debug=False, test=False, prefix=''):
+    def estimate_hmm_based_IDR(self, grid=False, N=100, EPS=1e-4, fix_mu=False, fix_sigma=False, fix_trans=False, debug=False, test=False, prefix=''):
         """ N=-1: no forward-backward (IDR computation). N=0 -> forward-backward once with trained parameters."""
         self.print_time('start')
         self.print_setting("IDR-HMM", N, grid, fix_mu, fix_sigma)
@@ -713,7 +716,7 @@ class ParamFitHMM:
         self.write_responsibility_to_file("IDR-HMM-final")
         if N > 0:
             if self.train:
-                self.write_params(param_file)
+                self.write_params()
             else:
-                self.write_params(param_file, 'learn_' if len(prefix) == 0 else prefix)
+                self.write_params('learn_' if len(prefix) == 0 else prefix)
         self.print_time("last_iter")

@@ -1,0 +1,10 @@
+mode	train
+set	idr	#Print 1-probability
+case	vitro_ctss_case.tab
+cont	vitro_ctss_cont.tab
+time	10	#Iteration times
+core	5	#Multi-core process
+param	default_parameters.txt
+output_param	vitro_train.param.txt
+output	vitro.csv	#Write to train_vitro.csv
+ref	rRNA_with_minus.fa

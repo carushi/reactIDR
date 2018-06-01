@@ -13,8 +13,9 @@ def get_parser():
           "*******************************************************************************************\n")
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('argv_file', type=str, nargs='*')
     parser.add_argument("--case", dest="case", type=str, help="tab-separated input of replicated read counts or scores (loop/acc to be enriched)\n" + \
-                        " (e.g., FILE1, FILE2, ...)", metavar="CASE", required=True)
+                        " (e.g., FILE1, FILE2, ...)", metavar="CASE", required=False)
     parser.add_argument("--control", dest="control", type=str, help="tab-separeted input of replicated read counts or scores (stem to be enriched)", metavar="CONTROL", required=False)
     parser.add_argument("--reverse", dest="reverse", action="store_true", help="recognize stem regions should be enriched in the case\n" + \
     "The case data in the output csv is always assumed to be enriched at accessible region even when reverse is valid.", required=False)
@@ -30,7 +31,8 @@ def get_parser():
     parser.add_argument("--grid", dest="grid", action="store_true", help="grid search for initial IDR parameters (default: false)", required=False)
     parser.add_argument("--core", dest="core", type=int, help="Multi core processes for speed up.", required=False)
 
-    parser.add_argument("--param", dest="param_file", type=str, help="parameter file name as input or output", required=False)
+    parser.add_argument("--param", dest="iparam_file", type=str, help="parameter file name as input or output", required=False)
+    parser.add_argument("--output_param", dest="oparam_file", type=str, help="parameter file name as output", required=False)
     parser.add_argument("--mu", dest="mu", type=float, help="mean of the reproducible group", default=1., required=False)
     parser.add_argument("--sigma", dest="sigma", type=float, help="variance of the reproducible group", default=0.2, required=False)
     parser.add_argument("--rho", dest="rho", type=float, help="correlation strength of the reproducible group among the replicates", default=0.8, required=False)
@@ -48,8 +50,38 @@ def get_parser():
     parser.add_argument("--print_keys", dest="print_keys", action="store_true", help="print keys (e.g., gene name) to be computed.", required=False)
     parser.add_argument("--key_file", nargs='+', dest="key_files", help="read key files to be computed (one gene per one line).", required=False)
     parser.add_argument("--threshold", dest="threshold", type=float, help="remove transcripts whose average score is lower than a threshold.", default=float('nan'), required=False)
-    parser.set_defaults(grid=False, test=False, fix_trans=False, param_file=None, control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
+    parser.set_defaults(grid=False, test=False, fix_trans=False, iparam_file=None, oparam_file=None, case=[], control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
     return parser
+
+def set_each_option(key, value, options):
+    fargv_dict = {'mu':'mu', 'sigma':'sigma', 'rho':'rho', 'q':'p'}
+    arg_dict = {'indepenednt':'inde', 'each-transcript':'each'}
+    argv_dict = {'param':'iparam', 'output_param':'oparam'}
+    if key == 'mode':
+        exec("options."+value+" = True")
+    elif key in ['core', 'start', 'end', 'time']:
+        exec("options."+key+" = int(value)")
+    elif key in fargv_dict:
+        exec("options."+fargv_dict[key]+" = float(value)")
+    elif key in argv_dict:
+        exec("options."+argv_dict[key]+" = \""+value+"\"")
+    elif key == 'set':
+        if value in arg_dict:
+            exec("options."+arg_dict[value]+" = True")
+        else:
+            exec("options."+value+" = True")
+    else:
+        exec("options."+key+" = \""+value+"\"")
+    return options
+
+def read_options(options):
+    for fname in options.argv_file:
+        with open(fname) as f:
+            for line in f.readlines():
+                contents = line.rstrip('\n').split('\t')
+                if len(contents) >= 2:
+                    options = set_each_option(contents[0], contents[1], options)
+    return options
 
 def test_each_set(para, *args):
     para.test_hmm_EMP(*args)
@@ -162,20 +194,21 @@ class IDRHmm:
             try:
                 self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                     self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
-                                    core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append)
+                                    core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append, \
+                                    iparam=self.arg.iparam_file, oparam=self.arg.oparam_file)
                 if self.train:
-                    self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_mu=self.arg.fix_mu, \
+                    self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), fix_mu=self.arg.fix_mu, \
                                         fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
                 elif self.test:
-                    self.para.test_hmm_EMP(self.grid, N=-1, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+                    self.para.test_hmm_EMP(self.grid, N=-1, fix_trans=self.arg.fix_trans, \
                                        fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 elif self.fit:
-                    self.para.fit_hmm_EMP(self.grid, N=max(1, self.arg.time), param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+                    self.para.fit_hmm_EMP(self.grid, N=max(1, self.arg.time), fix_trans=self.arg.fix_trans, \
                                        fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 elif self.noHMM:
                     self.para.estimate_global_IDR(self.grid)
                 else:
-                    self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, param_file=self.arg.param_file, fix_trans=self.arg.fix_trans, \
+                    self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                                  fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 append = True
             except:
@@ -184,8 +217,13 @@ class IDRHmm:
 def main(argv):
     parser = get_parser()
     options = parser.parse_args(argv[1:])
+    if options.argv_file is not None:
+        option = read_options(options)
     if options.random:
         options = set_random(options)
+    if len(options.case) == 0:
+        print("No data")
+        return
     hmm = IDRHmm(options)
     if options.print_keys:
         hmm.get_print_keys()

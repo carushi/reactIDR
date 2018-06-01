@@ -1,0 +1,8 @@
+mode	test
+set	idr
+case	vitro_ctss_case.tab
+cont	vitro_ctss_cont.tab
+core	5
+param	vitro_train.param.txt
+output	vitro.csv
+ref	rRNA_with_minus.fa
