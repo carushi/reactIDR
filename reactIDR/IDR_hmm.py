@@ -5,7 +5,7 @@ import random
 from param_fit_hmm import *
 from utility import *
 
-def get_parser():
+
     print("*******************************************************************************************\n"+\
           "* reactIDR: Statistical reproducibility evaluation of                                     *\n"+\
           "*           high-throughput structure analyses for robust RNA reactivity classification   *\n"+\
@@ -31,8 +31,8 @@ def get_parser():
     parser.add_argument("--grid", dest="grid", action="store_true", help="grid search for initial IDR parameters (default: false)", required=False)
     parser.add_argument("--core", dest="core", type=int, help="Multi core processes for speed up.", required=False)
 
-    parser.add_argument("--param", dest="iparam_file", type=str, help="parameter file name as input or output", required=False)
-    parser.add_argument("--output_param", dest="oparam_file", type=str, help="parameter file name as output", required=False)
+    parser.add_argument("--param", dest="iparam", type=str, help="parameter file name as input or output", required=False)
+    parser.add_argument("--output_param", dest="oparam", type=str, help="parameter file name as output", required=False)
     parser.add_argument("--mu", dest="mu", type=float, help="mean of the reproducible group", default=1., required=False)
     parser.add_argument("--sigma", dest="sigma", type=float, help="variance of the reproducible group", default=0.2, required=False)
     parser.add_argument("--rho", dest="rho", type=float, help="correlation strength of the reproducible group among the replicates", default=0.8, required=False)
@@ -50,7 +50,7 @@ def get_parser():
     parser.add_argument("--print_keys", dest="print_keys", action="store_true", help="print keys (e.g., gene name) to be computed.", required=False)
     parser.add_argument("--key_file", nargs='+', dest="key_files", help="read key files to be computed (one gene per one line).", required=False)
     parser.add_argument("--threshold", dest="threshold", type=float, help="remove transcripts whose average score is lower than a threshold.", default=float('nan'), required=False)
-    parser.set_defaults(grid=False, test=False, fix_trans=False, iparam_file=None, oparam_file=None, case=[], control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
+    parser.set_defaults(grid=False, test=False, fix_trans=False, iparam=None, oparam=None, case=[], control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
     return parser
 
 def set_each_option(key, value, options):
@@ -195,7 +195,7 @@ class IDRHmm:
                 self.para = ParamFitHMM(hclass, data, self.sample_size, self.params, self.arg.debug, self.output, \
                                     self.ref, self.arg.start, self.arg.end, -1, self.DMS, self.train, \
                                     core=self.arg.core, reverse=self.arg.reverse, independent=self.arg.inde, idr=self.arg.idr, append=append, \
-                                    iparam=self.arg.iparam_file, oparam=self.arg.oparam_file)
+                                    iparam=self.arg.iparam, oparam=self.arg.oparam)
                 if self.train:
                     self.para.train_hmm_EMP(self.grid, N=max(1, self.arg.time), fix_mu=self.arg.fix_mu, \
                                         fix_sigma=self.arg.fix_sigma, fix_trans=self.arg.fix_trans)
