@@ -1,8 +1,8 @@
-<img src="https://sites.google.com/site/cawatchm/reactIDR_logo.png" width="280">
+<img src="https://raw.githubusercontent.com/carushi/reactIDR/master/image/logo.png" width="280">
 
 ### Evaluation of the statistical reproducibility of high-throughput structural analyses for a robust RNA reactivity classification
 
-<img src="https://sites.google.com/site/cawatchm/reactIDR_workflow.png" width="500">
+<img src="https://raw.githubusercontent.com/carushi/reactIDR/master/image/workflow.png" width="500">
 
 * Input read count data
 	* PARS

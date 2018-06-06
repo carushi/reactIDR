@@ -1,0 +1,8 @@
+mode	test
+set	idr
+case	S1.tab
+cont	V1.tab
+core	5
+param	pars_param.txt
+output	pars.csv
+ref	rRNA_with_minus.fa
