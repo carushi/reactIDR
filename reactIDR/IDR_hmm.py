@@ -5,7 +5,7 @@ import random
 from param_fit_hmm import *
 from utility import *
 
-
+def get_parser():
     print("*******************************************************************************************\n"+\
           "* reactIDR: Statistical reproducibility evaluation of                                     *\n"+\
           "*           high-throughput structure analyses for robust RNA reactivity classification   *\n"+\
