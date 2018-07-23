@@ -111,13 +111,12 @@ def truncate_transcript(rep, max_len, skip_start, skip_end):
     if max_len > 0:
         return rep[0:max_len]
     else:
-        if max(skip_start, 0)+max(skip_end, 0) > len(rep):
-            if len(rep) <= 1: # chr(0) hidden ([]), data ([0])
-                return []
-            else:
-                return [0]
+        if len(rep) <= 1: # chr(0) hidden ([]), data ([0])
+            return []
+        elif max(skip_start, 0)+max(skip_end, 0) > len(rep):
+            return [0]
         else:
-            return rep[max(skip_start, 0):len(rep)-max(skip_end, 0)]
+            return rep[max(skip_start, 0):(len(rep)-max(skip_end, 0))]
 
 def truncate_and_concatenate_score(seta, single_set, max_len, skip_start, skip_end):
     return np.asarray([ item for sublist in [single_set[i] for i in seta if i in single_set] \
@@ -186,7 +185,7 @@ class ParamFitHMM:
         self.hclass = hclass
         self.append = append
         # self.fb = None
-        assert hclass == 2 or hclass == 3
+        assert hclass == 2 or hclass == 3, 'not allowed dimension'
         if self.hclass == 2:
             neutral = '0.7 0.3; 0.3 0.7'
             drastic = '0.95 0.05; 0.8 0.2'
@@ -199,7 +198,7 @@ class ParamFitHMM:
             self.transition_param = self.init_transition_param.copy()
         if type(param) == type(None):
             param = (1, 0.2, 0.8, 0.2) # mu, sigma, rho, pi
-        assert(len(param) > 0)
+        assert len(param) > 0, 'len(param) > 0'
         if len(param) == 4 or isinstance(param[0], float):
             self.params = []
             for i in range(hclass-1):
@@ -232,7 +231,7 @@ class ParamFitHMM:
         if self.train:
             hidden = self.allocate_struct_based_hclass(self.ref, reverse)
         if len(self.DMS_file) > 0:
-            assert not reverse
+            assert not reverse, 'not reverse'
             hidden = self.allocate_seq_based_hclass(self.DMS_file, hidden)
         if hidden is not None:
             hidden[chr(0)] = []
@@ -258,7 +257,7 @@ class ParamFitHMM:
         return self.params[index].copy()
 
     def get_pseudo_value(self, index):
-        assert index+1 < self.hclass
+        assert index+1 < self.hclass, 'index+1 < self.hclass'
         return self.HMM.pseudo_value[index]
 
     def normalized_prob(self, vec):
@@ -322,7 +321,7 @@ class ParamFitHMM:
             return q
         min_step_size = min_val - theta[index]
         max_step_size = max_val - theta[index]
-        assert theta[index] >= min_val and theta[index] <= max_val
+        assert theta[index] >= min_val and theta[index] <= max_val, 'theta[index] precedes the limit'
         alpha = fminbound(f, min_step_size, max_step_size)
         prev_lhd, new_lhd = -f(0), -f(alpha)
         print("CA step -> ", new_lhd, prev_lhd, alpha, theta)
@@ -377,7 +376,7 @@ class ParamFitHMM:
         sys.stdout.flush()
         return prev_theta, max(new_lhd)
 
-    def EM_iteration_grad(self, iter_count, lhd, fix_mu, fix_sigma, alpha):
+    def EM_iteration_grad(self, iter_count, N, lhd, fix_mu, fix_sigma, alpha):
         break_flag = False
         # update_amount = self.HMM.q_function_grad()
         thetas, pseudo_lhds = [], []
@@ -390,7 +389,7 @@ class ParamFitHMM:
         for j in range(len(self.v)):
             prev_theta = self.get_IDR_params(j)
             sum_param_change, mean_pseudo_val_change = self.check_value_change(iter_count, j, prev_theta, thetas[j], pseudo_lhds[j])
-            if not (iter_count > 5 and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
+            if not (iter_count > N/2. and (sum_param_change < EPS and mean_pseudo_val_change < EPS)):
                 pass
             else:
                 break_flag = True
@@ -488,7 +487,7 @@ class ParamFitHMM:
                 if key == chr(0):   continue
                 for i in range(len(self.v)):
                     if self.train:
-                        assert key in struct_dict
+                        assert key in struct_dict, key+' in struct_dict'
                     if key in struct_dict:
                         self.print_reference_for_each_sample(i, struct_dict[key], "ref", key)
 
@@ -578,8 +577,8 @@ class ParamFitHMM:
             try:
                 self.transition_param = np.matrix(eval(lines[0]), dtype=float)
                 self.params = eval(lines[1].rstrip('\n'))
-                assert self.transition_param.shape == (self.hclass, self.hclass)
-                assert len(self.params) >= 1 and all([len(p) == 4 for p in self.params])
+                assert self.transition_param.shape == (self.hclass, self.hclass), 'transition_shape inconsistency'
+                assert len(self.params) >= 1 and all([len(p) == 4 for p in self.params]), 'param_shape inconsistency'
                 if self.verbose:
                     print("Read from param file: ", fname)
             except:
@@ -611,7 +610,7 @@ class ParamFitHMM:
         self.write_reference_to_file()
         self.write_idr_value_to_file()
 
-    def parameter_optimization_iter(self, index, space, fix_mu=False, fix_sigma=False, fix_trans=False):
+    def parameter_optimization_iter(self, index, N, space, fix_mu=False, fix_sigma=False, fix_trans=False):
         if not fix_trans:
             self.set_new_transition(str(index))
             self.set_new_p(first=(index == 0))
@@ -621,7 +620,7 @@ class ParamFitHMM:
             print(index, -1, self.get_IDR_params(), end='\t', sep='\t')
             print_mat_one_line(self.transition_param, '\n')
             # print('alpha->', 10**space[index], sep="\t")
-        break_flag = self.EM_iteration_grad(index, lhd, fix_mu, fix_sigma, 10**space[index])
+        break_flag = self.EM_iteration_grad(index, N, lhd, fix_mu, fix_sigma, 10**space[index])
         # break_flag = self.EM_iteration_numeric(i, lhd, fix_mu, fix_sigma, space[i]) # Numerical differentiation.
         return lhd, break_flag
 
@@ -710,7 +709,7 @@ class ParamFitHMM:
             if self.verbose:
                 print('--------')
             try:
-                lhd, break_flag = self.parameter_optimization_iter(i, space, fix_mu, fix_sigma, fix_trans)
+                lhd, break_flag = self.parameter_optimization_iter(i, N, space, fix_mu, fix_sigma, fix_trans)
             except:
                 print('Unexpected error', sys.exc_info())
             if debug:

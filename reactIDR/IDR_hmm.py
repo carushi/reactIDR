@@ -212,7 +212,8 @@ class IDRHmm:
                                                  fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 append = True
             except:
-                pass
+                print('Unexpected error', sys.exc_info())
+                print(traceback.print_exc())
 
 def main(argv):
     parser = get_parser()

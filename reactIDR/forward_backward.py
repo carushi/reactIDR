@@ -28,7 +28,7 @@ class ForwardBackward:
         if hidden is None: # -1 any. 0,1,2 -> predefined hidden class.
             self.hidden = -np.ones(shape=(length+1), dtype=np.int8)
         else:
-            assert hidden.shape[0] == length+1
+            assert hidden.shape[0] == length+1, str(hidden.shape[0])+' != '+str(length+1)
             self.hidden = hidden
 
     def fill_inf(self):
