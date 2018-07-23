@@ -10,7 +10,6 @@ import scipy.linalg
 from utility import *
 from idr_wrapper_hmm import only_build_rank_vector_23dim, get_concatenated_scores, get_idr_value_23dim, estimate_copula_params
 
-
 APPROX_GRAD = False
 RRNA_MODE = False
 
@@ -182,7 +181,7 @@ def set_hmm_transcripts(data, sample_size, max_len, skip_start, skip_end, hidden
 class ParamFitHMM:
     """docstring for ParamFitHMM"""
     def __init__(self, hclass, data, sample = -1, param=None, debug = False, idr_output = 'idr_output.csv', ref = '',
-                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, iparam=None, oparam=None, core=1, 
+                 start = -1, end = 35, max_len = -1, DMS_file="", train=False, iparam=None, oparam=None, core=1,
                  reverse=False, independent=False, idr=True, append=False):
         self.hclass = hclass
         self.append = append
@@ -237,6 +236,8 @@ class ParamFitHMM:
             hidden = self.allocate_seq_based_hclass(self.DMS_file, hidden)
         if hidden is not None:
             hidden[chr(0)] = []
+        elif self.verbose:
+            print('No reference information for unsupervised learning')
         self.v, self.stop_sites, self.keys, hidden, self.length_list = set_hmm_transcripts(data, sample, self.max_len, self.skip_start, self.skip_end, hidden, debug)
         if self.verbose:
             print('Transcript--')
@@ -625,6 +626,8 @@ class ParamFitHMM:
         return lhd, break_flag
 
     def allocate_seq_based_hclass(self, ref, hidden):
+        if self.verbose:
+            print('Set hidden class for (semi) supervised learning: Sequence based')
         struct_dict = get_struct_dict(ref, seq_to_float)
         if hidden is None:
             if self.hclass == 3:
@@ -641,6 +644,8 @@ class ParamFitHMM:
         return hidden
 
     def allocate_struct_based_hclass(self, ref, reverse):
+        if self.verbose:
+            print('Set hidden class for (semi) supervised learning: Structure based')
         struct_dict = get_struct_dict(ref, dot_blacket_to_float)
         if self.hclass == 3:
             hidden = convert_to_hidden_dict(struct_dict, lambda x: 2 if x > 0.0 else 0 if x == -1.0 else -1 if x == -2.0 else 1)
@@ -704,7 +709,10 @@ class ParamFitHMM:
         for i in range(N):
             if self.verbose:
                 print('--------')
-            lhd, break_flag = self.parameter_optimization_iter(i, space, fix_mu, fix_sigma, fix_trans)
+            try:
+                lhd, break_flag = self.parameter_optimization_iter(i, space, fix_mu, fix_sigma, fix_trans)
+            except:
+                print('Unexpected error', sys.exc_info())
             if debug:
                 self.write_responsibility_to_file("IDR-HMM-"+str(i))
             self.print_time(str(i)+"_iter")

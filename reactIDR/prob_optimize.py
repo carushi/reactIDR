@@ -53,7 +53,8 @@ def log_lhd_loss_3dim(r1, r2, r3, theta):
     z1 = fastpo.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
     z2 = fastpo.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
     z3 = fastpo.c_my_compute_pseudo_values(r3, z3, mu, sigma, p, EPS)
-    return calc_mix_gaussian_lhd_3dim(z1, z2, z3, theta)
+    lhd = calc_mix_gaussian_lhd_3dim(z1, z2, z3, theta)
+    return lhd
 
 def log_lhd_loss(r1, r2, theta):
     mu, sigma, rho, p = theta
@@ -76,7 +77,7 @@ def calc_gaussian_lhd_3dim(x1, x2, x3, theta):
     d3 = x3-mu
     inv_mat = -3.*math.log(2.*pi)-math.log(1.-rho)-0.5*math.log((2.*rho+1.)*sigma)
     inv_exp = 2.*(1-rho)*(2.*rho+1.)*sigma
-    loglik = inv_mat-((1+rho)*(d1**2+d2**2+d3**2)-2*rho(d1*d2+d1*d3+d2*d3))/inv_exp
+    loglik = inv_mat-((1+rho)*(d1**2+d2**2+d3**2)-2*rho*(d1*d2+d1*d3+d2*d3))/inv_exp
     return loglik
 
 def calc_gaussian_lhd(x1, x2, theta):
@@ -567,8 +568,9 @@ class QfuncGrad3dim():
         self.set_grad_component_3dim()
         self.set_grad_3dim()
         self.set_grad_log_3dim()
+        # self.debug_print()
 
-    def init_all_variables(self, length):
+    def init_all_variables_3dim(self, length):
         self.Nr = [0.]*length
         self.Ni = [0.]*length
         self.N3r = 0.
@@ -580,11 +582,11 @@ class QfuncGrad3dim():
         self.logR = 0.
         self.logI = 0.
         self.logS = 0.
-        self.dfdx_list = [[]*length] # order x1, x2
-        self.fx_dfdx_list = [[]*length] # order x1, x2
-        self.dfdx_list_log = [[]*length] # order x1, x2
-        self.fx_dfdx_list_log = [[]*length] # order x1, x2
-        self.grad_merge = [[[0]*length]*2] # order mu x1,x2, sigma x1,x2
+        self.dfdx_list = [[] for i in range(length)] # order x1, x2
+        self.fx_dfdx_list = [[] for i in range(length)] # order x1, x2
+        self.dfdx_list_log = [[] for i in range(length)] # order x1, x2
+        self.fx_dfdx_list_log = [[] for i in range(length)] # order x1, x2
+        self.grad_merge = [[[0] for i in range(length)] for j in range(2)] # order mu x1,x2, sigma x1,x2
         self.grad_list_raw = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho, without merginal terms
         self.grad_list_log_raw = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho, without merginal terms
         self.grad_list = [[0]*3, [0]*3, [0]*3] # order rep mu,sigma,rho, irep mu,sigma,rho
@@ -595,7 +597,7 @@ class QfuncGrad3dim():
         for n, v in zip(self.__dict__.keys(), self.__dict__.values()):
             print(n, v)
 
-    def set_gaussian_component(self):
+    def set_gaussian_component_3dim(self):
         mu, sigma, rho, p = self.params
         for i, x in enumerate(self.xvar):
             self.Nr[i] = exp(calc_gaussian_lhd_1dim(x, mu, sigma))
@@ -649,18 +651,18 @@ class QfuncGrad3dim():
         x = self.xvar[index]
         s = np.prod(np.array([s for i, s in enumerate(self.S) if i != index]))
         Nr, Ni = self.Nr[index], self.Ni[index]
-        return -((x-mu)/sigma*p*Nr+x*(1-p)*self.Ni)*s
+        return -((x-mu)/sigma*p*Nr+x*(1.-p)*Ni)*s
 
     def logS_grad_x(self, index):
         mu, sigma, rho, p = self.params
         x = self.xvar[index]
         s = self.S[index]
         Nr, Ni = self.Nr[index], self.Ni[index]
-        return -((x-mu)/sigma*p*Nr+x*(1-p)*self.Ni)/s
+        return -((x-mu)/sigma*p*Nr+x*(1.-p)*Ni)/s
 
     def expR_grad_mu(self):
         mu, sigma, rho, p = self.params
-        return (sum(self.xvar)-3.*mu)/(sigma*(2*rho+1))
+        return (sum(self.xvar)-3.*mu)/(sigma*(2*rho+1.))
 
     def logR_grad_mu(self):
         mu, sigma, rho, p = self.params
@@ -731,7 +733,7 @@ class QfuncGrad3dim():
         mu, sigma, rho, p = self.params
         return -p*(self.xvar[index]-mu)/(2.*sigma)*self.Nr[index]
 
-    def set_grad_component(self):
+    def set_grad_component_3dim(self):
         mu, sigma, rho, p = self.params
         for i in range(self.msize):
             self.dfdx_list[i] = self.dfdx(i)
@@ -744,7 +746,7 @@ class QfuncGrad3dim():
             self.grad_merge[0][i] = self.grad_merge_mu(i)
             self.grad_merge[1][i] = self.grad_merge_sigma(i)
 
-    def set_grad(self):
+    def set_grad_3dim(self):
         for r in [0, 1]:
             rep = (r == 0)
             for p in range(0, 3):
@@ -766,7 +768,7 @@ class QfuncGrad3dim():
                     else:
                         self.grad_list[r][p] = self.grad_list_raw[r][p] = 0.0
 
-    def set_grad_log(self):
+    def set_grad_log_3dim(self):
         for r in [0, 1]:
             rep = (r == 0)
             for p in range(0, 3):

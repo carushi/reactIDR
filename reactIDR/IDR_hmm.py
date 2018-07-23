@@ -55,7 +55,7 @@ def get_parser():
 
 def set_each_option(key, value, options):
     fargv_dict = {'mu':'mu', 'sigma':'sigma', 'rho':'rho', 'q':'p'}
-    arg_dict = {'indepenednt':'inde', 'each-transcript':'each'}
+    arg_dict = {'indepenednt':'inde', 'each-transcript':'each', 'grid':'grid'}
     argv_dict = {'param':'iparam', 'output_param':'oparam'}
     if key == 'mode':
         exec("options."+value+" = True")
