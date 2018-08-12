@@ -85,7 +85,7 @@ def common_transcript(dict1, dict2):
 def top_90_95(vec, start=32, end=32):
     temp = vec[start:len(vec)-end+1]
     temp.sort()
-    high = [temp[i] for i in range(math.floor(len(temp)*90./100.), math.ceil(len(temp)*95./100.))]
+    high = [temp[i] for i in range(int(math.floor(len(temp)*90./100.)), int(math.ceil(len(temp)*95./100.)))]
     if len(high) == 0:
         return 1.
     else:
