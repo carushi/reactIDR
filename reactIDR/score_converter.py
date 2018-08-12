@@ -117,7 +117,7 @@ def calc_icshape_reactivity(tdata, tcdata, ndata, ncdata, alpha=0.25, threshold=
     sortl = sorted([x for x in scores if x is not None])
     if len(sortl) == 0:
         return [0.]*len(ncdata)
-    tmin, tmax = sortl[max(0, math.floor(5./100.*len(sortl))-1)], sortl[min(len(sortl)-1, math.ceil(95./100.*len(sortl))-1)]
+    tmin, tmax = sortl[max(0, int(math.floor(5./100.*len(sortl))-1))], sortl[min(len(sortl)-1, int(math.ceil(95./100.*len(sortl))-1))]
     if tmin == tmax:
         return [0.]*len(ncdata)
     return [np.clip((x-tmin)/(tmax-tmin), 0, 1) if x is not None else None for i, x in enumerate(scores)]
