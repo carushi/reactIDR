@@ -1,6 +1,8 @@
 <img src="https://raw.githubusercontent.com/carushi/reactIDR/master/image/logo.png" width="280">
 
-### Evaluation of the statistical reproducibility of high-throughput structural analyses for a robust RNA reactivity classification
+### reactIDR: evaluation of the statistical reproducibility of high-throughput structural analyses towards a robust RNA structure prediction
+
+* Published in [BMC Bioinformatics](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-019-2645-4)
 
 <img src="https://raw.githubusercontent.com/carushi/reactIDR/master/image/workflow.png" width="500">
 
@@ -22,7 +24,7 @@
 * numpy
 * scikit-learn
 
-and more packages are required for visualization process as follows:
+Other packages are required for visualization process as follows:
 * pandas
 * seaborn
 
@@ -33,7 +35,7 @@ cd reactIDR/
 python setup.py  build_ext -b reactIDR/ # cython build
 cd example && bash training.sh    # Run test
 ```
-
+Please visit [our wiki](https://github.com/carushi/reactIDR/wiki) for further info.
 
 
 ## Script
@@ -49,6 +51,7 @@ cd example && bash training.sh    # Run test
 	* use to append raw count (read count, coverage, ...) to the output csv file
 
 ## Reference
+* R. Kawaguchi, H. Kiryu, J. Iwakiri and J. Sese. ["reactIDR: evaluation of the statistical reproducibility of high-throughput structural analyses towards a robust RNA structure prediction"  BMC Bioinformatics 20 (Suppl 3) :130 (2019)"](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-019-2645-4) ー Selected for APBC '19 proceedings
 
 * [Docker image for reactIDR](https://hub.docker.com/r/carushi/rt_end_counter/)
 	* Convert bam to read count data
