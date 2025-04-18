@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "Cython", "numpy"]
+requires = ["setuptools>=61.0", "wheel", "Cython", "numpy", "scipy", "pandas"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,14 +13,14 @@ authors = [
 license = {text = "GPL2"}
 requires-python = ">=3.9"
 dependencies = [
-    "numpy",
-    "scipy",
+    "numpy>=2.0.2",
+    "scipy>=1.13.1",
     "matplotlib",
-    "pandas"
+    "pandas>=2.2.3"
 ]
 
-scripts = { reactIDR = "reactIDR.main:main" }
-
+[project.scripts]
+reactIDR = "reactIDR.main:main"
 
 [project.urls]
 Homepage = "https://github.com/carushi/reactIDR"

@@ -6,51 +6,79 @@
 
 <img src="https://raw.githubusercontent.com/carushi/reactIDR/master/image/workflow.png" width="500">
 
-* Input read count data
-	* PARS
-	* SHAPE-Seq
-	* icSHAPE
-	* DMS-Seq (assumed to be enriched only at A or C)
+**reactIDR** is a Python package that evaluates statistical reproducibility across replicated high-throughput RNA structure profiling data (e.g., PARS, SHAPE-Seq, icSHAPE, DMS-Seq) to robustly infer loop and stem probabilities.
 
-* Output
-	* posterior probability of being loop (enriched in case) or stem (enriched in control)
+---
 
-* Algorithm
-	* [IDR](https://github.com/nboley/idr) + hidden Markov Model
+## 📥 Input
+- Read count data (tabular format)
+  - PARS
+  - SHAPE-Seq
+  - icSHAPE
+  - DMS-Seq (assumed to enrich A/C only)
 
+## 📤 Output
+- Posterior probability for each site:
+  - **Loop** (signal enriched in "case")
+  - **Stem** (signal enriched in "control")
 
-## Requirement
-* python3
-* numpy
-* scikit-learn
+## 🧠 Algorithm
+- [IDR](https://github.com/nboley/idr) (Irreproducible Discovery Rate)
+- Hidden Markov Model
 
-Other packages are required for visualization process as follows:
-* pandas
-* seaborn
+---
+## 🔧 Requirements
 
-## How to start
+```
+python >= 3.9
+numpy >= 2.0.2
+scipy >= 1.13.1
+pandas >= 2.2.3
+```
+
+Optional packages for visualization:
+
+```
+seaborn
+jupyter notebook
+```
+
+🚀 Installation
+```
+pip install reactIDR
+```
+
+▶️ Getting Started
+Test datasets are provided in the example and csv_example directories.
+To run a demo using CSV input:
 ```
 git clone https://github.com/carushi/reactIDR
-cd reactIDR/
-python setup.py  build_ext -b reactIDR/ # cython build
-cd example && bash training.sh    # Run test
+cd reactIDR/csv_example
+python -c "import reactIDR; reactIDR.run_reactIDR([
+  '-e', '0',
+  '--csv',
+  '--global',
+  '--case', './csv_example/case.csv',
+  '--output', 'test.csv',
+  '--param', './csv_example/default_parameters.txt'
+])"
 ```
-Please visit [our wiki](https://github.com/carushi/reactIDR/wiki) for further info.
+
+📚 More usage examples and options are available in the [Wiki](https://github.com/carushi/reactIDR/wiki).
 
 
-## Script
-* read_collapse.py
-	* collapse PCR duplicates and trim barcode
-	* assume gawk
-* read_truncate.py
-	* extract consistent paired end reads
-* bed_to_pars_format.py
-	* write PARS-formatted 5' end coverage data based on gtf and gff annotation or sequence location
-	* format: NAME <tab> 0;1;2;3;.....
-* tab_to_csv.py
-	* use to append raw count (read count, coverage, ...) to the output csv file
+🛠️ Scripts
 
-## Reference
+| Script                | Description                                                               |
+|-----------------------|---------------------------------------------------------------------------|
+| `read_collapse.py`    | Collapse PCR duplicates and trim barcodes (assumes `gawk`)                |
+| `read_truncate.py`    | Extract consistent paired-end reads                                       |
+| `bed_to_pars_format.py` | Convert BED coverage to PARS-style format based on annotations           |
+|                         |  format: NAME <tab> 0;1;2;3;..... |
+| `tab_to_csv.py`       | Append raw count data to output CSV | 
+
+
+📖 Reference
 * R. Kawaguchi, H. Kiryu, J. Iwakiri and J. Sese. ["reactIDR: evaluation of the statistical reproducibility of high-throughput structural analyses towards a robust RNA structure prediction"  BMC Bioinformatics 20 (Suppl 3) :130 (2019)"](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-019-2645-4) ー Selected for APBC '19 proceedings
 
 * [Docker image for reactIDR](https://hub.docker.com/r/carushi/rt_end_counter/)
