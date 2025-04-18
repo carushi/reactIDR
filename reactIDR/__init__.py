@@ -1,3 +1,7 @@
+"""
+reactIDR: IDR implementation for RNA reactivity analysis
+"""
+
 import sys
 
 MAX_ITER_DEFAULT = 3000
@@ -24,3 +28,9 @@ MIN_MU = 0.0
 MAX_MU = 20.0
 
 EPS = 1e-6
+
+
+
+version__ = "2.0.0"
+
+from .main import run_reactIDR

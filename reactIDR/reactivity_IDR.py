@@ -8,8 +8,8 @@ import math
 from statsmodels.tsa.stattools import acf
 import pvalue
 import pylab
-from idr_wrapper import *
-from plot_image import *
+from reactIDR.idr_wrapper import *
+from reactIDR.plot_image import *
 # import idr.optimization
 # from idr.utility import calc_post_membership_prbs, compute_pseudo_values
 

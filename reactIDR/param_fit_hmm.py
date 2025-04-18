@@ -3,12 +3,12 @@ import sys
 import time
 import resource
 import os
-from forward_backward import *
+from reactIDR.forward_backward import *
 from scipy.optimize import fminbound, minimize, fmin_l_bfgs_b
 from scipy.stats import rankdata
 import scipy.linalg
-from utility import *
-from idr_wrapper_hmm import only_build_rank_vector_23dim, get_concatenated_scores, get_idr_value_23dim, estimate_copula_params
+from reactIDR.utility import *
+from reactIDR.idr_wrapper_hmm import only_build_rank_vector_23dim, get_concatenated_scores, get_idr_value_23dim, estimate_copula_params
 
 APPROX_GRAD = False
 RRNA_MODE = False
@@ -679,11 +679,11 @@ class ParamFitHMM:
 
     def print_time(self, head):
         if self.time is None:
-            self.time = [time.time(), time.clock()]
+            self.time = [time.time(), time.time()]
             print("Time check:", head, self.time[0], self.time[1], '(process,time,clock)')
         else:
             current_time = time.time()
-            current_clock = time.clock()
+            current_clock = time.time()
             print("Time check:", head, current_time - self.time[0], current_clock-self.time[1], '(process,time,clock)')
             self.time = [current_time, current_clock]
             if head == 'global' or head == 'last_iter':
@@ -705,6 +705,7 @@ class ParamFitHMM:
             print(0, -1, self.get_IDR_params(), end=' ', sep='\t')
         print_mat_one_line(self.transition_param, '\n')
         space = np.linspace(-1., np.log10(EPS), N)
+        break_flag = False
         for i in range(N):
             if self.verbose:
                 print('--------')

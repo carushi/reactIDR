@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+include reactIDR/cython/fast_param_fit.pyx
+include reactIDR/cython/fast_param_fit.c

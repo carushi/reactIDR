@@ -1,5 +1,8 @@
-cimport cython
-cimport numpy as np
+import numpy as np_py
+cimport numpy as np_cy
+
+np_cy.import_array()
+
 from libc.math cimport exp, sqrt, pow, log, erf, fabs, log1p
 from libc.stdlib cimport malloc, free
 
@@ -16,8 +19,8 @@ cpdef double c_logsumexp(double x, double y):
         return (x + log1p(exp(-x+y)))
     return (y + log1p(exp(-y+x)))
 
-def c_logsumexp_inf(np.ndarray[np.double_t, ndim=1] x):
-    cpdef double total = 0.0
+def c_logsumexp_inf(np_cy.ndarray[np_cy.double_t, ndim=1] x):
+    cdef double total = 0.0
     for i in range(len(x)):
         if i == 0:
             total = x[i]
@@ -57,8 +60,8 @@ cpdef double cdf_i(double r, double mu, double sigma, double lamda,
     assert False
 
 def c_my_compute_pseudo_values(
-        np.ndarray[np.int_t, ndim=1] rs,
-        np.ndarray[np.double_t, ndim=1] zs,
+        np_cy.ndarray[np_cy.int64_t, ndim=1] rs,
+        np_cy.ndarray[np_cy.double_t, ndim=1] zs,
         double mu, double sigma, double lamda,
         double EPS):
     cdef int N = len(rs)

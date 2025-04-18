@@ -4,7 +4,7 @@ import numpy as np
 import copy
 import math
 from enum import Enum
-from prob_optimize import *
+from reactIDR.prob_optimize import *
 
 def is_rep(h, rep_class):
     return 0 if h == rep_class else 1
@@ -202,15 +202,15 @@ class HMM:
         if x3 is None:
             deno = logS(x1, x2, param)
             if rep:
-                return fastpo.c_calc_gaussian_lhd(x1, x2, param)-deno
+                return fast_param_fit.c_calc_gaussian_lhd(x1, x2, param)-deno
             else:
-                return fastpo.c_calc_gaussian_lhd(x1, x2, [0., 1., 0., 0.])-deno
+                return fast_param_fit.c_calc_gaussian_lhd(x1, x2, [0., 1., 0., 0.])-deno
         else:
             deno = logS_3dim(x1, x2, x3, param)
             if rep:
-                return fastpo.c_calc_gaussian_lhd_3dim(x1, x2, x3, param)-deno
+                return fast_param_fit.c_calc_gaussian_lhd_3dim(x1, x2, x3, param)-deno
             else:
-                return fastpo.c_calc_gaussian_lhd_3dim(x1, x2, x3, [0., 1., 0., 0.])-deno
+                return fast_param_fit.c_calc_gaussian_lhd_3dim(x1, x2, x3, [0., 1., 0., 0.])-deno
 
     def emission_prob_log_value_ris(self, rep, params, x1, x2, x3=None):
         if x3 is None:

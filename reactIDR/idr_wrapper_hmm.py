@@ -1,12 +1,12 @@
 import sys
 import os
-import utility
+import reactIDR.utility
 from multiprocessing import Pool
 import numpy as np
 from scipy.optimize import fminbound
 from scipy.stats import rankdata
 import matplotlib.pyplot as plt
-from prob_optimize import *
+from reactIDR.prob_optimize import *
 
 def plot_pseudo_value(z1, z2, header):
     plt.scatter(z1, z2)
@@ -28,10 +28,10 @@ def rank_vector(rep):
 def only_build_rank_vectors(s1, s2):
     rank1 = rank_vector(s1)
     rank2 = rank_vector(s2)
-    return (np.array(rank1, dtype=np.int), np.array(rank2, dtype=np.int))
+    return (np.array(rank1, dtype=int), np.array(rank2, dtype=int))
 
 def only_build_rank_vector_23dim(reps):
-    return tuple([np.array(rank_vector(rep), dtype=np.int) for rep in reps])
+    return tuple([np.array(rank_vector(rep), dtype=int) for rep in reps])
 
 
 def comp_pseudo_multi_core(array, param, thread):

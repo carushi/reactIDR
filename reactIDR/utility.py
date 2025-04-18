@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+import pandas as pd
 
 def log(s):
     print(s)
@@ -134,6 +135,35 @@ def print_score_data(fname, dicts):
                 f.write(get_print_str_score(tdict[key]))
             f.write('\n')
 
+def read_csv_rows(fname, delim, seta):
+    df = pd.read_csv(fname, index_col=0, sep=delim, header=0)
+    print('# Header', df.columns)
+    print(df)
+    if seta is not None:
+        df = df.loc[[x for x in df.index if x not in seta],:]
+    for i, row in df.iterrows():
+        yield i, df.columns, tuple(map(nan_float, row))
+    
+def read_csv_multi(fnames, threshold, verbose=True, seta=None, delim=','):
+    data = []
+    target = []
+    if seta is not None:
+        target = seta
+    assert len(fnames) >= 1
+    index = 0
+    print("# Reading ", fnames[index])
+    count, rcount = 0, 0
+    if len(fnames[index]) == 0:
+        return data
+    data.append([])
+    tuple_list = read_csv_rows(fnames[index], delim, seta)
+    gene_list, columns, elements = zip(*tuple_list)
+    columns = columns[0].tolist()
+    for i, each_list in enumerate(list(zip(*elements))):
+        data[index].append({})
+        data[index][i]['transcript'] = list(each_list)
+    return data, gene_list, columns
+
 def read_only_keys_of_high_expression_pars_multi(fnames, threshold, verbose=True):
     target = []
     for index in range(len(fnames)):
@@ -263,3 +293,18 @@ def get_struct_dict(file, func, trans_convert=True):
 #
 #
 #
+
+def convert_output_to_csv(fname, row_name, column_name):
+    df = pd.read_csv(fname, sep="\t", header=None)
+    for i, row in df.iterrows():
+        if row[0] == 'IDR':
+            pd.DataFrame(pd.Series(index=row_name, data=row[3].split(';')), columns=['IDR-'+'-'.join(column_name)]).to_csv('matrix_'+fname)
+    # print(df)
+    # print(df.shape)
+    # print(df.index)
+    # print(row)
+    # print(column)
+    # print(len(row))
+    # print(len(column))
+    # print(df.iloc[2,0])
+    # print(len(df.iloc[2,0].split(':')))

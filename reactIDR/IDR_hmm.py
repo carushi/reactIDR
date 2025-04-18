@@ -2,14 +2,16 @@ import os
 import sys
 import argparse
 import random
-from param_fit_hmm import *
-from utility import *
+from reactIDR.param_fit_hmm import *
+from reactIDR.utility import *
+import traceback
+
 
 def get_parser():
     print("*******************************************************************************************\n"+\
           "* reactIDR: Statistical reproducibility evaluation of                                     *\n"+\
           "*           high-throughput structure analyses for robust RNA reactivity classification   *\n"+\
-          "*                                                              @carushi 2017.11.07.v1.0   *\n"+\
+          "*                                                              @carushi 2025.04.08.v2.0   *\n"+\
           "*******************************************************************************************\n")
 
     parser = argparse.ArgumentParser()
@@ -37,6 +39,7 @@ def get_parser():
     parser.add_argument("--sigma", dest="sigma", type=float, help="variance of the reproducible group", default=0.2, required=False)
     parser.add_argument("--rho", dest="rho", type=float, help="correlation strength of the reproducible group among the replicates", default=0.8, required=False)
     parser.add_argument("--q", dest="p", type=float, help="ratio of reproducible group", default=0.3, required=False)
+    parser.add_argument("--csv", dest="csv", action="store_true", help="input is treated as csv files; only valid for when noHMM mode is turned on.", required=False)
     parser.add_argument("--fix_mu", dest="fix_mu", action="store_true", help="fix mu, or no optimization.", required=False)
     parser.add_argument("--fix_sigma", dest="fix_sigma", action="store_true", help="fix sigma, or no optimization.", required=False)
     parser.add_argument("--fix_trans", dest="fix_trans", action="store_true", help="fix transition matrix, or no optimization.", required=False)
@@ -128,6 +131,8 @@ class IDRHmm:
         self.train = arg.train
         self.DMS = arg.DMS
         self.arg = arg
+        self.csv_info = []
+
 
 
     def set_hclass(self):
@@ -163,32 +168,48 @@ class IDRHmm:
             if minus in rep:    dict[minus] = rep[minus]
         return dict
 
+    def get_data_csv(self, seta):
+        data, gene_list, columns = read_csv_multi(self.input, self.arg.threshold, True, seta, delim=',')
+        self.csv_info = [list(gene_list), columns]
+        print('# CSV data --')
+        print('# row(genes) :', self.csv_info[0])
+        print('# column(samples):', self.csv_info[1])
+        for key in data[0][0].keys():
+            print(key)
+            if key != chr(0) and key[-1] != '-':
+                yield [[self.extract_each_trans(key, rep) for rep in sample] for sample in data]
+        
     def get_data(self):
         seta = None
         if len(self.key_files) > 0:
             seta = read_keys(self.key_files)
         if not self.arg.each:
             seta = [seta]
-        if seta is None:
-            if self.arg.threshold == self.arg.threshold:
-                data = read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, seta)
-            else:
-                data = read_data_pars_format_multi(self.input, True, seta)
-            for key in data[0][0].keys():
-                if key != chr(0) and key[-1] != '-':
-                    yield [[self.extract_each_trans(key, rep) for rep in sample] for sample in data]
+        if self.arg.csv:
+            for data in self.get_data_csv(seta):
+                yield data
         else:
-            for trans in seta:
+            if seta is None:
                 if self.arg.threshold == self.arg.threshold:
-                    yield read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, trans)
+                    data = read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, seta)
                 else:
-                    yield read_data_pars_format_multi(self.input, True, trans)
+                    data = read_data_pars_format_multi(self.input, True, seta)
+                for key in data[0][0].keys():
+                    if key != chr(0) and key[-1] != '-':
+                        yield [[self.extract_each_trans(key, rep) for rep in sample] for sample in data]
+            else:
+                for trans in seta:
+                    if self.arg.threshold == self.arg.threshold:
+                        yield read_only_high_expression_pars_multi(self.input, self.arg.threshold, True, trans)
+                    else:
+                        yield read_data_pars_format_multi(self.input, True, trans)
 
     def infer_reactive_sites(self):
         hclass = self.set_hclass()
         self.set_prefix_output()
         append = False
         for data in self.get_data():
+            print(data)
             if len(data) == 0 or len(data[0]) == 0:
                 continue
             try:
@@ -207,6 +228,8 @@ class IDRHmm:
                                        fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 elif self.noHMM:
                     self.para.estimate_global_IDR(self.grid)
+                    if self.arg.csv:
+                        convert_output_to_csv(self.output, self.csv_info[0], self.csv_info[1])
                 else:
                     self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                                  fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
@@ -215,9 +238,16 @@ class IDRHmm:
                 print('Unexpected error', sys.exc_info())
                 print(traceback.print_exc())
 
-def main(argv):
-    parser = get_parser()
-    options = parser.parse_args(argv[1:])
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+    try:
+        parser = get_parser()
+        options = parser.parse_args(argv[1:])
+    except:
+        print('Parse error', sys.exc_info())
+        return
+    print(options)
     if options.argv_file is not None:
         option = read_options(options)
     if options.random:

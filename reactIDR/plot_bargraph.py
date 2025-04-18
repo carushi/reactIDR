@@ -1,7 +1,7 @@
 import sys
 import os
 import argparse
-from utility import *
+from reactIDR.utility import *
 import math
 import numpy as np
 import matplotlib.pyplot as plt

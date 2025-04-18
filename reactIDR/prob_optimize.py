@@ -1,14 +1,12 @@
-from scipy.misc import logsumexp
 import numpy as np
 import math
 from scipy.optimize import brentq
 from multiprocessing import Pool
 from math import pi, exp, expm1, sqrt
-from scipy.misc import logsumexp
-from scipy.special import erf
-import fastpo
+from scipy.special import erf, logsumexp
+from reactIDR.cython import fast_param_fit
 
-from __init__ import *
+from . import *
 
 
 def logsumexp_inf(x):
@@ -50,9 +48,9 @@ def log_lhd_loss_3dim(r1, r2, r3, theta):
     z1 = np.zeros(len(r1), dtype=float)
     z2 = np.zeros(len(r2), dtype=float)
     z3 = np.zeros(len(r3), dtype=float)
-    z1 = fastpo.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
-    z2 = fastpo.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
-    z3 = fastpo.c_my_compute_pseudo_values(r3, z3, mu, sigma, p, EPS)
+    z1 = fast_param_fit.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
+    z2 = fast_param_fit.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
+    z3 = fast_param_fit.c_my_compute_pseudo_values(r3, z3, mu, sigma, p, EPS)
     lhd = calc_mix_gaussian_lhd_3dim(z1, z2, z3, theta)
     return lhd
 
@@ -60,8 +58,8 @@ def log_lhd_loss(r1, r2, theta):
     mu, sigma, rho, p = theta
     z1 = np.zeros(len(r1), dtype=float)
     z2 = np.zeros(len(r2), dtype=float)
-    z1 = fastpo.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
-    z2 = fastpo.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
+    z1 = fast_param_fit.c_my_compute_pseudo_values(r1, z1, mu, sigma, p, EPS)
+    z2 = fast_param_fit.c_my_compute_pseudo_values(r2, z2, mu, sigma, p, EPS)
     return calc_mix_gaussian_lhd(z1, z2, theta)
 
 def log_lhd_loss_23dim(theta, r1, r2, r3=None):
@@ -238,7 +236,7 @@ def hmm_compute_pseudo_values(vec, mu, sigma, p):
     pseudo_values = []
     z = np.zeros(len(vec), dtype=float)
     try:
-        pseudo_values = fastpo.c_my_compute_pseudo_values(vec, z, mu, sigma, p, EPS)
+        pseudo_values = fast_param_fit.c_my_compute_pseudo_values(vec, z, mu, sigma, p, EPS)
     except:
         pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p, -100, 100)
     return pseudo_values
@@ -317,6 +315,7 @@ class QfuncGrad:
         self.set_grad_component()
         self.set_grad()
         self.set_grad_log()
+
 
     def init_all_variables(self):
         self.N1r = 0.

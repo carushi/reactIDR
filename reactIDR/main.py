@@ -1,24 +1,24 @@
-#!/usr/bin/env python
-
 import sys
-import IDR_hmm
-import score_converter
-import evaluate_IDR_csv
+from .IDR_hmm import *
 
-import sys
-def main():
-    if len(sys.argv) > 1:
-        if sys.argv[1] == 'convert':
-            score_converter.main(['score_converter.py']+sys.argv[2:])
-            return
-        elif sys.argv[1] == 'visualize':
-            evaluate_IDR_csv.main(['evaluate_IDR_csv.py']+sys.argv[2:])
-            return
-        else:
-            IDR_hmm.main(['IDR_hmm.py']+sys.argv[2:])
-            return
-    IDR_hmm.main(['IDR_hmm.py'])
-
+def run_reactIDR(argv=None):
+    if argv is None:    
+        argv = sys.argv
+    parser = get_parser()
+    options = parser.parse_args(argv[1:])
+    print(options)
+    if options.argv_file is not None:
+        option = read_options(options)
+    if options.random:
+        options = set_random(options)
+    if len(options.case) == 0:
+        print("No data")
+        return
+    hmm = IDRHmm(options)
+    if options.print_keys:
+        hmm.get_print_keys()
+    else:
+        hmm.infer_reactive_sites()
 
 if __name__ == '__main__':
-    main()
+    run_reactIDR(sys.argv)

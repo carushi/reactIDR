@@ -106,7 +106,7 @@ def calc_tp_fp(answer, pred, pos, verbose=True, narm=True, negative=False, assym
         converted_p, answer = pred_conversion_assym(pred, narm, negative, pos, answer)
     else:
         converted_p, answer = pred_conversion(pred, narm, negative, pos, answer)
-    fpr, tpr, threshold = metrics.roc_curve(np.array(answer), np.array(converted_p), pos)
+    fpr, tpr, threshold = metrics.roc_curve(np.array(answer), np.array(converted_p), pos_label=pos)
     if len(fpr) >= 2:
         auc = metrics.auc(fpr, tpr)
     else:

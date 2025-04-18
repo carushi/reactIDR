@@ -9,10 +9,8 @@ misc
 .DS_Store
 */.DS_Store
 
-# C extensions
-*.so
-
 # Distribution / packaging
+*.so, *.pyd
 .Python
 env/
 build/

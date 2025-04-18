@@ -10,13 +10,11 @@ from scipy.stats import rankdata, kde
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
-# import seaborn as sns
-# from seaborn import JointGrid
-import seaborn.apionly as sns
-from seaborn.apionly import JointGrid
+import seaborn as sns
+from seaborn import JointGrid
 import pandas as pd
 import copy
-from AUC import *
+from reactIDR.AUC import *
 from collections import Counter
 import argparse
 
@@ -1234,12 +1232,13 @@ class ParamVis:
             print(line)
             param = line.split('\t')[1]
             if '], [' in line:
-                param = str.replace(param, '], [', ']; [')
-                param = np.matrix(param)
-                params[0].append(param[0,])
-                params[1].append(param[1,])
+                # param = str.replace(param, '], [', ']; [')
+                param = np.array(eval(param))
+                print(param)
+                params[0].append(np.ndarray((1, 4), dtype=float, buffer=param[0,]))
+                params[1].append(np.ndarray((1, 4), dtype=float, buffer=param[1,]))
             else:
-                params[0].append(np.matrix(param)[0,])
+                params[0].append(np.ndarray((1, 4), dtype=float, buffer=np.array(eval(param))[0,]))
         fig=plt.figure(1)
         for i in range(4):
             plt.subplot(220+(i+1))
@@ -1257,11 +1256,11 @@ class ParamVis:
         if len(plines) == 0:
             return
         index = sorted(list(set([0, math.floor(len(plines)/2)-1,  len(plines)-1])))
-        # print(index)
         for i, p in enumerate(index):
             plt.subplot(subplot_index[i])
-            param = str.replace(plines[p].split('\t')[2], '], [', ']; [')
-            param = np.matrix(param)
+            # param = str.replace(plines[p].split('\t')[2], '], [', ']; [')
+            param = plines[p].split('\t')[2]
+            param = np.array(eval(param))
             plt.imshow(param, aspect='auto', interpolation='nearest')
             plt.colorbar(orientation='horizontal')
             plt.title("Transition matrix ("+str(p)+")")

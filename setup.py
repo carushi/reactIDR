@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
-from setuptools import setup
-from distutils.core import setup
-from distutils.extension import Extension
-from Cython.Distutils import build_ext
+from setuptools import setup, Extension
+from Cython.Build import cythonize
 import numpy
+
+extensions = [
+    Extension(
+        "reactIDR.cython.fast_param_fit",  # モジュール名（パッケージパス付き）
+        sources=["reactIDR/cython/fast_param_fit.pyx"],
+        include_dirs=[numpy.get_include()],
+    )
+]
 
 setup(
     name="reactIDR",
-    version="1.1.0",
+    version="2.0.0",
     url='https://github.com/carushi/reactIDR/',
     author='carushi',
-    author_email='trumpet-lambda@hotmail.co.jp',
-    license="GPL3",
-    cmdclass={'build_ext': build_ext},
-    ext_modules=[Extension("fastpo", ["reactIDR/cython/fast_param_fit.pyx"], include_dirs=[numpy.get_include()], library_dirs=["reactIDR/"])],
-    entry_points={
-        "console_scripts": [
-            "reactIDR = reactIDR.main"
-            ]
-        },
+    author_email='1845273+carushi@users.noreply.github.com',
+    license="GPL2",
+    ext_modules=cythonize(extensions, language_level=3),
+    zip_safe=False,
 )

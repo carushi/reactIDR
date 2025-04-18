@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "Cython", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reactIDR"
+version = "2.0.0"
+description = "Implementation of the IDR (Irreproducible Discovery Rate) method for RNA reactivity data."
+readme = "README.md"
+authors = [
+    {name = "carushi", email = "1845273+carushi@users.noreply.github.com"}
+]
+license = {text = "GPL2"}
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas"
+]
+
+scripts = { reactIDR = "reactIDR.main:main" }
+
+
+[project.urls]
+Homepage = "https://github.com/carushi/reactIDR"
+Repository = "https://github.com/carushi/reactIDR"
+
+[tool.setuptools]
+packages = { find = { where = ["."] , include = ["reactIDR*"] } }

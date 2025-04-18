@@ -47,7 +47,7 @@ do
     echo writing to ${PATTERN}_${cond}.csv >&2
     python ../reactIDR/IDR_hmm.py --time 1 --idr --case ${cond}_ctss_case.tab --cont ${cond}_ctss_cont.tab --time 10 --core 5 --output_param ${cond}_train.param.txt --output ${cond}.csv --ref rRNA_with_minus.fa --${PATTERN} > ${PATTERN}_${cond}.out.txt
 done
-
+exit
 PATTERN="test"
 for cond in "vitro" "vivo"
 do
