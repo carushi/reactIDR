@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reactIDR"
-version = "2.0.0"
+version = "2.0.1"
 description = "Implementation of the IDR (Irreproducible Discovery Rate) method for RNA reactivity data."
 readme = "README.md"
 authors = [
@@ -28,3 +28,4 @@ Repository = "https://github.com/carushi/reactIDR"
 
 [tool.setuptools]
 packages = { find = { where = ["."] , include = ["reactIDR*"] } }
+

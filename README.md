@@ -56,12 +56,12 @@ To run a demo using CSV input:
 git clone https://github.com/carushi/reactIDR
 cd reactIDR/csv_example
 python -c "import reactIDR; reactIDR.run_reactIDR([
-  '-e', '0',
+  '-e 0',
   '--csv',
   '--global',
-  '--case', './csv_example/case.csv',
+  '--case', 'case.csv',
   '--output', 'test.csv',
-  '--param', './csv_example/default_parameters.txt'
+  '--param', 'default_parameters.txt'
 ])"
 ```
 
