@@ -27,6 +27,7 @@
 - Hidden Markov Model
 
 ---
+
 ## 🔧 Requirements
 
 ```
@@ -43,12 +44,12 @@ seaborn
 jupyter notebook
 ```
 
-🚀 Installation
+## 🚀 Installation
 ```
 pip install reactIDR
 ```
 
-▶️ Getting Started
+## ▶️ Getting Started
 Test datasets are provided in the example and csv_example directories.
 To run a demo using CSV input:
 ```
@@ -67,7 +68,7 @@ python -c "import reactIDR; reactIDR.run_reactIDR([
 📚 More usage examples and options are available in the [Wiki](https://github.com/carushi/reactIDR/wiki).
 
 
-🛠️ Scripts
+## 🛠️ Scripts
 
 | Script                | Description                                                               |
 |-----------------------|---------------------------------------------------------------------------|
@@ -78,7 +79,7 @@ python -c "import reactIDR; reactIDR.run_reactIDR([
 | `tab_to_csv.py`       | Append raw count data to output CSV | 
 
 
-📖 Reference
+## 📖 Reference
 * R. Kawaguchi, H. Kiryu, J. Iwakiri and J. Sese. ["reactIDR: evaluation of the statistical reproducibility of high-throughput structural analyses towards a robust RNA structure prediction"  BMC Bioinformatics 20 (Suppl 3) :130 (2019)"](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-019-2645-4) ー Selected for APBC '19 proceedings
 
 * [Docker image for reactIDR](https://hub.docker.com/r/carushi/rt_end_counter/)
