@@ -15,7 +15,7 @@ ext_modules = [
 
 setup(
     name="reactIDR",
-    version="2.0.1",
+    version="2.0.3",
     description="Implementation of the IDR computation for RNA reactivity data.",
     author="carushi",
     author_email="1845273+carushi@users.noreply.github.com",

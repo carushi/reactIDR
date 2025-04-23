@@ -671,6 +671,8 @@ class ParamFitHMM:
         self.estimate_hmm_based_IDR(grid, N, EPS, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans, test=True, prefix='fit_')
 
     def estimate_global_IDR(self, grid=False, fix_mu=False, fix_sigma=False, fix_trans=False):
+        if self.iparam is not None:
+            self.read_params()
         self.set_init_theta(grid, noHMM=True, omit_unmappaple=True, fix_mu=fix_mu, fix_sigma=fix_sigma)
         self.estimate_hmm_based_IDR(grid, N=-1, fix_mu=fix_mu, fix_sigma=fix_sigma, fix_trans=fix_trans)
 

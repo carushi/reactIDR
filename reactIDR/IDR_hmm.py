@@ -2,9 +2,10 @@ import os
 import sys
 import argparse
 import random
+import traceback
+
 from reactIDR.param_fit_hmm import *
 from reactIDR.utility import *
-import traceback
 
 
 def get_parser():
@@ -16,44 +17,130 @@ def get_parser():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('argv_file', type=str, nargs='*')
-    parser.add_argument("--case", dest="case", type=str, help="tab-separated input of replicated read counts or scores (loop/acc to be enriched)\n" + \
-                        " (e.g., FILE1, FILE2, ...)", metavar="CASE", required=False)
-    parser.add_argument("--control", dest="control", type=str, help="tab-separeted input of replicated read counts or scores (stem to be enriched)", metavar="CONTROL", required=False)
-    parser.add_argument("--reverse", dest="reverse", action="store_true", help="recognize stem regions should be enriched in the case\n" + \
-    "The case data in the output csv is always assumed to be enriched at accessible region even when reverse is valid.", required=False)
-    parser.add_argument("--output", dest="output", type=str, help="output filename suffix (it will be concatenated with the mode name test, train, or global)", required=False, default="idr_output.csv")
-    parser.add_argument("--ref", dest="ref", type=str, help="Fasta file of reference structures (dot-blacket style)\n" + \
-    "(dot-blacket style e.g. x.().x)", required=False, default="")
-    parser.add_argument("--DMS", dest="DMS", type=str, help="Use fasta file to exclude G and T (U) nucleotides from stem or accessible class due to no information.", required=False, default="")
-    parser.add_argument("--test", dest="test", action="store_true", help="apply given parameteres (test_<output>)", required=False)
-    parser.add_argument("--fit", dest="fit", action="store_true", help="apply given parameteres and fit (fit_<output>)", required=False)
-    parser.add_argument("--train", dest="train", action="store_true", help="train the parameters based on the reference information (train_<output>)", required=False)
-    parser.add_argument("--time", dest="time", type=int, help="maximum iteration time during the training", required=False)
-    parser.add_argument("--global", dest="noHMM", action="store_true", help="output IDR (noHMM_<output>)", required=False)
-    parser.add_argument("--grid", dest="grid", action="store_true", help="grid search for initial IDR parameters (default: false)", required=False)
-    parser.add_argument("--core", dest="core", type=int, help="Multi core processes for speed up.", required=False)
-
-    parser.add_argument("--param", dest="iparam", type=str, help="parameter file name as input or output", required=False)
-    parser.add_argument("--output_param", dest="oparam", type=str, help="parameter file name as output", required=False)
-    parser.add_argument("--mu", dest="mu", type=float, help="mean of the reproducible group", default=1., required=False)
-    parser.add_argument("--sigma", dest="sigma", type=float, help="variance of the reproducible group", default=0.2, required=False)
-    parser.add_argument("--rho", dest="rho", type=float, help="correlation strength of the reproducible group among the replicates", default=0.8, required=False)
-    parser.add_argument("--q", dest="p", type=float, help="ratio of reproducible group", default=0.3, required=False)
-    parser.add_argument("--csv", dest="csv", action="store_true", help="input is treated as csv files; only valid for when noHMM mode is turned on.", required=False)
-    parser.add_argument("--fix_mu", dest="fix_mu", action="store_true", help="fix mu, or no optimization.", required=False)
-    parser.add_argument("--fix_sigma", dest="fix_sigma", action="store_true", help="fix sigma, or no optimization.", required=False)
-    parser.add_argument("--fix_trans", dest="fix_trans", action="store_true", help="fix transition matrix, or no optimization.", required=False)
-    parser.add_argument("--random", dest="random", action="store_true", help="set initial parameters randomly", required=False)
-    parser.add_argument("-s", dest="start", type=int, help="ignore n bases from the very 5'-end", default=-1, required=False)
-    parser.add_argument("-e", dest="end", type=int, help="ignore n bases from the very 3'-end", default=35, required=False)
-    parser.add_argument("--idr", dest="idr", action="store_true", help="output 1-posterior probability during the test, train, and global mode", required=False)
-    parser.add_argument("-n", "--sample", dest="sample_size", type=int, help="sample size for test (default: all)", default=-1, metavar="SAMPLESIZE", required=False)
-    parser.add_argument("--independent", dest="inde", action="store_true", help="compute HMM for each transcript independently (avoid overflow).", required=False)
-    parser.add_argument("--each-transcript", dest="each", action="store_true", help="compute HMM for each transcript at each time (independent read distribution).", required=False)
-    parser.add_argument("--print_keys", dest="print_keys", action="store_true", help="print keys (e.g., gene name) to be computed.", required=False)
-    parser.add_argument("--key_file", nargs='+', dest="key_files", help="read key files to be computed (one gene per one line).", required=False)
-    parser.add_argument("--threshold", dest="threshold", type=float, help="remove transcripts whose average score is lower than a threshold.", default=float('nan'), required=False)
-    parser.set_defaults(grid=False, test=False, fix_trans=False, iparam=None, oparam=None, case=[], control=[], ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[])
+    parser.add_argument(
+        "--case", dest="case", type=str, 
+        help=(
+            "tab-separated input of replicated read counts or scores (loop/acc to be enriched)\n" + \
+            " (e.g., FILE1, FILE2, ...)", 
+        ),
+        metavar="CASE", required=False
+    )
+    parser.add_argument(
+        "--control", dest="control", type=str, 
+        help="tab-separeted input of replicated read counts or scores (stem to be enriched)", 
+        metavar="CONTROL", required=False
+    )
+    parser.add_argument(
+        "--reverse", dest="reverse", action="store_true", 
+        help=(
+            "recognize stem regions should be enriched in the case\n" + \
+            "The case data in the output csv is always assumed to be enriched at accessible region even when reverse is valid.", 
+        ),
+        required=False
+    )
+    parser.add_argument("--output", dest="output", type=str, 
+        help="output filename suffix (it will be concatenated with the mode name test, train, or global)",
+        required=False, default="idr_output.csv"
+    )
+    parser.add_argument(
+        "--ref", dest="ref", type=str, help="Fasta file of reference structures (dot-blacket style)\n" + \
+    "(dot-blacket style e.g. x.().x)", required=False, default=""
+    )
+    parser.add_argument(
+        "--DMS", dest="DMS", type=str, 
+        help="Use fasta file to exclude G and T (U) nucleotides from stem or accessible class due to no information.", required=False, default=""
+    )
+    parser.add_argument(
+        "--test", dest="test", action="store_true", help="apply given parameteres (test_<output>)", required=False
+    )
+    parser.add_argument(
+        "--fit", dest="fit", action="store_true", help="apply given parameteres and fit (fit_<output>)", required=False
+    )
+    parser.add_argument(
+        "--train", dest="train", action="store_true", 
+        help="train the parameters based on the reference information (train_<output>)", required=False
+    )
+    parser.add_argument(
+        "--time", dest="time", type=int, help="maximum iteration time during the training", required=False
+    )
+    parser.add_argument(
+        "--global", dest="noHMM", action="store_true", help="output IDR (noHMM_<output>)", required=False
+    )
+    parser.add_argument(
+        "--grid", dest="grid", action="store_true", help="grid search for initial IDR parameters (default: false)", 
+        required=False
+    )
+    parser.add_argument(
+        "--core", dest="core", type=int, help="Multi core processes for speed up.", required=False
+    )
+    parser.add_argument(
+        "--param", dest="iparam", type=str, help="parameter file name as input or output", required=False
+    )
+    parser.add_argument(
+        "--output_param", dest="oparam", type=str, help="parameter file name as output", required=False
+    )
+    parser.add_argument(
+        "--mu", dest="mu", type=float, help="mean of the reproducible group", default=1., required=False
+    )
+    parser.add_argument(
+        "--sigma", dest="sigma", type=float, help="variance of the reproducible group", default=0.2, required=False
+    )
+    parser.add_argument(
+        "--rho", dest="rho", type=float, help="correlation strength of the reproducible group among the replicates",
+        default=0.8, required=False
+    )
+    parser.add_argument(
+        "--q", dest="p", type=float, help="ratio of reproducible group", default=0.3, required=False
+    )
+    parser.add_argument(
+        "--csv", dest="csv", action="store_true", 
+        help="input is treated as csv files; only valid for when noHMM mode is turned on.", required=False
+    )
+    parser.add_argument(
+        "--fix_mu", dest="fix_mu", action="store_true", help="fix mu, or no optimization.", required=False
+    )
+    parser.add_argument(
+        "--fix_sigma", dest="fix_sigma", action="store_true", help="fix sigma, or no optimization.", required=False
+    )
+    parser.add_argument(
+        "--fix_trans", dest="fix_trans", action="store_true", help="fix transition matrix, or no optimization.", required=False
+    )
+    parser.add_argument(
+        "--random", dest="random", action="store_true", help="set initial parameters randomly", required=False
+    )
+    parser.add_argument(
+        "-s", dest="start", type=int, help="ignore n bases from the very 5'-end", default=-1, required=False
+    )
+    parser.add_argument(
+        "-e", dest="end", type=int, help="ignore n bases from the very 3'-end", default=35, required=False
+    )
+    parser.add_argument(
+        "--idr", dest="idr", action="store_true", help="output 1-posterior probability during the test, train, and global mode", required=False
+    )
+    parser.add_argument(
+        "-n", "--sample", dest="sample_size", type=int, help="sample size for test (default: all)", default=-1, metavar="SAMPLESIZE", required=False
+    )
+    parser.add_argument(
+        "--independent", dest="inde", action="store_true", help="compute HMM for each transcript independently (avoid overflow).", required=False
+    )
+    parser.add_argument(
+        "--each-transcript", dest="each", action="store_true", help="compute HMM for each transcript at each time (independent read distribution).", required=False
+    )
+    parser.add_argument(
+        "--print_keys", dest="print_keys", action="store_true", help="print keys (e.g., gene name) to be computed.", required=False
+    )
+    parser.add_argument(
+        "--key_file", nargs='+', dest="key_files", help="read key files to be computed (one gene per one line).", required=False
+    )
+    parser.add_argument(
+        "--threshold", dest="threshold", type=float, 
+        help="remove transcripts whose average score is lower than a threshold.", 
+        default=float('nan'), required=False
+    )
+    parser.set_defaults(
+        grid=False, test=False, fix_trans=False, iparam=None, oparam=None, case=[], control=[], 
+        ratio=False, debug=False, core=1, time=10, reverse=False, key_files=[]
+    )
     return parser
 
 def set_each_option(key, value, options):
@@ -94,7 +181,7 @@ def read_keys(files, verbose=True):
     for fname in files:
         if len(fname) == 0: continue
         if not os.path.isfile(fname):
-            if verbose: print("Cannot find", fname)
+            if verbose: print("File does not exist", fname)
             continue
         with open(fname) as f:
             seta += [line.lstrip('>').rstrip('\n') for line in f.readlines() if line != '' and line[0] != '#']
@@ -110,7 +197,7 @@ def set_random(options):
     options.mu = random.choice(np.linspace(0.1, 1.0, 10))
     options.sigma = random.choice(np.linspace(0.1, 1.0, 10))
     options.rho = random.choice(np.linspace(0.0, 0.9, 10))
-    options.p = random.choice(0.1, 0.9, 10)
+    options.p = random.choice(np.linspace(0.1, 0.9, 10))
     return options
 
 
@@ -139,11 +226,7 @@ class IDRHmm:
         """ hclass 2: unmappable and accessible class.
             hclass 3: unmappable, stem, and accessible class.
         """
-        if len(self.input[1]) == 0:
-            hclass = 2
-        else:
-            hclass = 3
-        return hclass
+        return 2 if len(self.input[1]) == 0 else 3
 
     def set_prefix_output(self):
         if self.train:
@@ -154,19 +237,17 @@ class IDRHmm:
             self.output = "fit_"+self.output
         elif self.noHMM:
             self.output = "noHMM_"+self.output
-        else:
-            pass
 
     def get_print_keys(self):
         target = read_only_keys_of_high_expression_pars_multi(self.input, self.arg.threshold)
         print('\n'.join(target))
 
     def extract_each_trans(self, key, rep):
-        dict = {chr(0): [0], key: rep[key]}
+        key_dict = {chr(0): [0], key: rep[key]}
         if key[-1] == '+' and False:
             minus = key[0:-1]+'-'
-            if minus in rep:    dict[minus] = rep[minus]
-        return dict
+            if minus in rep:    key_dict[minus] = rep[minus]
+        return key_dict
 
     def get_data_csv(self, seta):
         data, gene_list, columns = read_csv_multi(self.input, self.arg.threshold, True, seta, delim=',')
@@ -234,8 +315,9 @@ class IDRHmm:
                     self.para.estimate_hmm_based_IDR(self.grid, N=self.arg.time, fix_trans=self.arg.fix_trans, \
                                                  fix_mu=self.arg.fix_mu, fix_sigma=self.arg.fix_sigma)
                 append = True
-            except:
+            except argparse.ArgumentError as e:
                 print('Unexpected error', sys.exc_info())
+                print(e)
                 print(traceback.print_exc())
 
 def main(argv=None):
@@ -244,8 +326,13 @@ def main(argv=None):
     try:
         parser = get_parser()
         options = parser.parse_args(argv[1:])
-    except:
-        print('Parse error', sys.exc_info())
+    except argparse.ArgumentError as e:
+        print('Argument parsing error:', e)
+        traceback.print_exc()
+        return
+    except Exception as e:
+        print('Unexpected error during argument parsing:', e)
+        traceback.print_exc()
         return
     print(options)
     if options.argv_file is not None:

@@ -10,18 +10,15 @@ from . import *
 
 
 def logsumexp_inf(x):
-    temp = [v for v in x if v != -float('infinity')]
-    if len(temp) == 0:  return -float('infinity')
+    temp = [v for v in x if v != float('-inf')]
+    if len(temp) == 0:  return float('-inf')
     return logsumexp(temp)
 
 def diffexp_inf(x, y):
-    if x == -float('infinity'): return -exp(y)
-    elif y == -float('infinity'): return exp(x)
+    if x == float('-inf'): return -exp(y)
+    elif y == float('-inf'): return exp(x)
     elif x < y:   return exp(y)*expm1(x-y)
     else:   return exp(x)*expm1(y-x)
-    temp = [v for v in x if v != -float('infinity')]
-    if len(temp) == 0:  return -float('infinity')
-    return logsumexp(temp)
 
 def calc_mix_gaussian_lhd(x1, x2, theta):
     mu, sigma, rho, p = theta
@@ -91,12 +88,6 @@ def calc_gaussian_lhd_1dim(x, mu, sigma):
     loglik = (-0.5*(math.log(2.*pi*sigma))-(norm_x**2)/2.)
     return loglik
 
-# def calc_mix_gaussian_lhd(x1, x2, theta):
-#     mu, sigma, rho, p = theta
-#     signal = [calc_gaussian_lhd(t1, t2, (mu, sigma, rho, 0.)) for t1, t2 in zip(x1, x2)]
-#     noise = [calc_gaussian_lhd(t1, t2, (0., 1., 0., 0)) for t1, t2 in zip(x1, x2)]
-#     loglike = np.asarray([math.log(p*exp(s)+(1-p)*exp(n)) for s, n in zip(signal, noise)])
-#     return loglike.sum()
 
 def calc_post_membership_prbs_23dim(z1, z2, z3, theta):
     mu, sigma, rho, p = theta
@@ -241,21 +232,26 @@ def hmm_compute_pseudo_values(vec, mu, sigma, p):
         pseudo_values = my_compute_pseudo_values(vec, mu, sigma, p, -100, 100)
     return pseudo_values
 
-def hmm_grid_search_multi_cores(thread, r1, r2, r3=None):
+def hmm_grid_search_multi_cores(thread, r1, r2, r3=None, verbose=False):
     res = []
     best_theta = None
     max_log_lhd = -1e100
     args = []
     for mu in np.linspace(0.1, 5, num=10):
         for sigma in np.linspace(0.5, 3, num=10):
-            for rho in np.linspace(0.1, 0.9, num=10):
-                for pi in np.linspace(0.1, 0.9, num=10):
+            for rho in np.linspace(0.1, 0.7, num=10):
+                for pi in np.linspace(0.1, 0.7, num=10):
                     args.append((mu, sigma, rho, pi))
     pool = Pool(thread)
     log_lhd = pool.starmap(log_lhd_loss_23dim, [(arg, r1, r2, r3) for arg in args])
     pool.close()
+    pool.join()
     max_index, max_value = max(enumerate(log_lhd), key=lambda x: x[1])
     best_theta, max_log_lhd = args[max_index], log_lhd[max_index]
+    if verbose:
+        print('Grid search--------')
+        for i in range(len(log_lhd)):
+            print(log_lhd[i], ':', args[i]) 
     return best_theta
 
 def hmm_grid_search(r1, r2, r3=None):

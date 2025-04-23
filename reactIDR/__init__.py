@@ -31,6 +31,6 @@ EPS = 1e-6
 
 
 
-version__ = "2.0.0"
+version__ = "2.0.3"
 
 from .main import run_reactIDR
